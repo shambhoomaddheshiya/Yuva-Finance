@@ -5,9 +5,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
 import { ArrowDown, ArrowUp, Banknote, Users, Percent, Calendar } from 'lucide-react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
-import { useUser, useFirestore } from '@/firebase';
+import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { useMemo } from 'react';
 import { collection, query } from 'firebase/firestore';
 
 function StatCard({
@@ -47,9 +46,9 @@ export default function DashboardPage() {
   const { user } = useUser();
   const firestore = useFirestore();
 
-  const settingsRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/groupSettings`)) : null, [user, firestore]);
-  const membersRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
-  const transactionsRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
+  const settingsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/groupSettings`)) : null, [user, firestore]);
+  const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
+  const transactionsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
 
   const { data: settingsData, isLoading: settingsLoading } = useCollection<GroupSettings>(settingsRef);
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);

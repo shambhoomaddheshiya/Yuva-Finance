@@ -7,7 +7,7 @@ import * as z from 'zod';
 import { PlusCircle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { collection, doc, query } from 'firebase/firestore';
-import { useUser, useFirestore, addDocumentNonBlocking } from '@/firebase';
+import { useUser, useFirestore, addDocumentNonBlocking, useMemoFirebase } from '@/firebase';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
@@ -140,7 +140,7 @@ function AddMemberForm({ onOpenChange }: { onOpenChange: (open: boolean) => void
 export default function MembersPage() {
   const { user } = useUser();
   const firestore = useFirestore();
-  const membersRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
+  const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
   const { data: memberList, isLoading: loading } = useCollection<Member>(membersRef);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);

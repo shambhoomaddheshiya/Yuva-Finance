@@ -11,7 +11,7 @@ import { format } from 'date-fns';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
 import type { Member, Transaction } from '@/types';
-import { useUser, useFirestore, addDocumentNonBlocking } from '@/firebase';
+import { useUser, useFirestore, addDocumentNonBlocking, useMemoFirebase } from '@/firebase';
 
 
 import { Button } from '@/components/ui/button';
@@ -71,7 +71,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useUser();
   const firestore = useFirestore();
-  const membersRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
+  const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
 
   const form = useForm<z.infer<typeof transactionSchema>>({
@@ -258,8 +258,8 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 export default function TransactionsPage() {
   const { user } = useUser();
   const firestore = useFirestore();
-  const transactionsRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
-  const membersRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
+  const transactionsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
+  const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
 
   const { data: transactions, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);

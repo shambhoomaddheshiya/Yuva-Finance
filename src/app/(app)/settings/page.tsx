@@ -10,7 +10,7 @@ import { collection, query, doc } from 'firebase/firestore';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
 import type { GroupSettings } from '@/types';
-import { useUser, useFirestore, setDocumentNonBlocking } from '@/firebase';
+import { useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase } from '@/firebase';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -28,7 +28,7 @@ export default function SettingsPage() {
   const { user } = useUser();
   const firestore = useFirestore();
 
-  const settingsRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/groupSettings`)) : null, [user, firestore]);
+  const settingsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/groupSettings`)) : null, [user, firestore]);
   const { data: settingsData, isLoading: loading } = useCollection<GroupSettings>(settingsRef);
   const settings = settingsData?.[0];
 
