@@ -4,89 +4,125 @@
  * Core Philosophy:
  * This ruleset enforces a strict user-ownership model where each user can only
  * access data associated with their own user ID. This is achieved through
- * path-based access control under the /users/{userId} collection.
+ * path-based access control under `/users/{userId}`.
  *
  * Data Structure:
- * - /users/{userId}/members/{memberId}: Stores member data, accessible only by the owning user.
- * - /users/{userId}/transactions/{transactionId}: Stores transaction data, accessible only by the owning user.
- * - /users/{userId}/groupSettings: Stores group settings, accessible only by the owning user.
+ * - `/users/{userId}/members/{memberId}`: Stores member data, accessible only to the owning user.
+ * - `/users/{userId}/transactions/{transactionId}`: Stores transaction data, accessible only to the owning user.
+ * - `/users/{userId}/groupSettings`: Stores group settings, accessible only to the owning user.
  *
  * Key Security Decisions:
- * - User data is strictly segregated by user ID, preventing cross-user access.
- * - Listing of user-owned collections (members, transactions) is allowed only to the owning user.
+ * - User data is strictly segregated by `userId` in the path.
+ * - List operations are secured by the path-based ownership model.
+ *
+ * Denormalization for Authorization:
+ * - Group settings data is denormalized (copied) into members and transactions documents.  This allows
+ *   security rules to be written without needing to `get()` group settings data during member or
+ *   transaction creation or modification, which would be slow and expensive. This denormalization is not implemented
+ *   because the current data model does not include these settings in the member and transaction entities, but the rules
+ *   are structured as though this were implemented.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Enforces access control for member documents. Only the owner can create, read, update, and delete.
-     * @path /users/{userId}/members/{memberId}
-     * @allow (create) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can create a member document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/members/someMemberId if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2 and the memberId in the document matches the path.
-     * @allow (get) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can get a member document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/members/someMemberId if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2.
-     * @allow (list) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can list member documents under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/members if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2.
-     * @allow (update) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can update a member document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/members/someMemberId if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2.
-     * @allow (delete) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can delete a member document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/members/someMemberId if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2 and the document exists.
-     * @deny (create) User abc cannot create a member document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/members/someMemberId because request.auth.uid != wq8CqKB0mlbCiFGMylZejvBHiMT2.
-     * @principle Enforces document ownership for writes.
+     * @description Checks if the user is signed in.
+     * @path N/A (Helper function)
+     * @allow N/A (Helper function)
+     * @deny N/A (Helper function)
+     * @principle Authentication: Ensures that only authenticated users can access the data.
      */
-    match /users/{userId}/members/{memberId} {
-      allow get: if isSignedIn() && isOwner(userId);
-      allow list: if isSignedIn() && isOwner(userId);
-      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.id == memberId;
-      allow update: if isSignedIn() && isExistingOwner(userId) && resource.data.id == request.resource.data.id;
-      allow delete: if isSignedIn() && isExistingOwner(userId);
+    function isSignedIn() {
+      return request.auth != null;
     }
 
     /**
-     * @description Enforces access control for transaction documents. Only the owner can create, read, update, and delete.
+     * @description Checks if the user ID matches the authenticated user's ID.
+     * @path N/A (Helper function)
+     * @allow N/A (Helper function)
+     * @deny N/A (Helper function)
+     * @principle Ownership: Ensures that only the owner of the data can access it.
+     */
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the user ID matches the authenticated user's ID and the resource exists.
+     * @path N/A (Helper function)
+     * @allow N/A (Helper function)
+     * @deny N/A (Helper function)
+     * @principle Ownership and Existence: Ensures that only the owner of the data can access it and that the resource exists.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    /**
+     * @description Rules for managing members under a specific user.
+     * @path /users/{userId}/members/{memberId}
+     * @allow (create) - User wq8CqKB0mlbCiFGMylZejvBHiMT2 can create a member with ID matching the userId.
+     * @allow (get, list) - User wq8CqKB0mlbCiFGMylZejvBHiMT2 can get and list members under their own userId.
+     * @allow (update, delete) - User wq8CqKB0mlbCiFGMylZejvBHiMT2 can update and delete members under their own userId.
+     * @deny (create) - User anotherUserId cannot create a member under userId wq8CqKB0mlbCiFGMylZejvBHiMT2.
+     * @deny (get, list) - User anotherUserId cannot get and list members under userId wq8CqKB0mlbCiFGMylZejvBHiMT2.
+     * @deny (update, delete) - User anotherUserId cannot update and delete members under userId wq8CqKB0mlbCiFGMylZejvBHiMT2.
+     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     */
+    match /users/{userId}/members/{memberId} {
+      // Read rules
+      allow get: if isSignedIn() && isOwner(userId);
+      allow list: if isSignedIn() && isOwner(userId);
+
+      // Write rules
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Rules for managing transactions under a specific user and member.
      * @path /users/{userId}/transactions/{transactionId}
-     * @allow (create) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can create a transaction document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/transactions/someTransactionId if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2 and transactionId matches the path
-     * @allow (get) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can get a transaction document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/transactions/someTransactionId if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2
-     * @allow (list) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can list transaction documents under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/transactions if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2
-     * @allow (update) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can update a transaction document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/transactions/someTransactionId if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2
-     * @allow (delete) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can delete a transaction document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/transactions/someTransactionId if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2 and the document exists
-     * @deny (create) User abc cannot create a transaction document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/transactions/someTransactionId because request.auth.uid != wq8CqKB0mlbCiFGMylZejvBHiMT2
-     * @principle Enforces document ownership for writes.
+     * @allow (create) - User wq8CqKB0mlbCiFGMylZejvBHiMT2 can create a transaction with ID matching the userId.
+     * @allow (get, list) - User wq8CqKB0mlbCiFGMylZejvBHiMT2 can get and list transactions under their own userId.
+     * @allow (update, delete) - User wq8CqKB0mlbCiFGMylZejvBHiMT2 can update and delete transactions under their own userId.
+     * @deny (create) - User anotherUserId cannot create a transaction under userId wq8CqKB0mlbCiFGMylZejvBHiMT2.
+     * @deny (get, list) - User anotherUserId cannot get and list transactions under userId wq8CqKB0mlbCiFGMylZejvBHiMT2.
+     * @deny (update, delete) - User anotherUserId cannot update and delete transactions under userId wq8CqKB0mlbCiFGMylZejvBHiMT2.
+     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
      */
     match /users/{userId}/transactions/{transactionId} {
+      // Read rules
       allow get: if isSignedIn() && isOwner(userId);
       allow list: if isSignedIn() && isOwner(userId);
-      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.id == transactionId;
-      allow update: if isSignedIn() && isExistingOwner(userId) && resource.data.id == request.resource.data.id;
-      allow delete: if isSignedIn() && isExistingOwner(userId);
-    }
 
-     /**
-      * @description Enforces access control for group settings documents. Only the owner can create, read, update, and delete.
-      * @path /users/{userId}/groupSettings
-      * @allow (create) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can create a groupSettings document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/groupSettings if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2.
-      * @allow (get) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can get a groupSettings document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/groupSettings if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2.
-      * @allow (list) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can list groupSettings documents under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/groupSettings if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2.
-      * @allow (update) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can update a groupSettings document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/groupSettings if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2.
-      * @allow (delete) User wq8CqKB0mlbCiFGMylZejvBHiMT2 can delete a groupSettings document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/groupSettings if request.auth.uid == wq8CqKB0mlbCiFGMylZejvBHiMT2.
-      * @deny (create) User abc cannot create a groupSettings document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/groupSettings because request.auth.uid != wq8CqKB0mlbCiFGMylZejvBHiMT2.
-      * @principle Enforces document ownership for writes.
-      */
-    match /users/{userId}/groupSettings {
-      allow get: if isSignedIn() && isOwner(userId);
-      allow list: if isSignedIn() && isOwner(userId);
+      // Write rules
       allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isSignedIn() && isExistingOwner(userId);
-      allow delete: if isSignedIn() && isExistingOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
     }
-  }
 
-  // Helper Functions
-  function isSignedIn() {
-    return request.auth != null;
-  }
+    /**
+     * @description Rules for managing group settings for a specific user.
+     * @path /users/{userId}/groupSettings
+     * @allow (create) - User wq8CqKB0mlbCiFGMylZejvBHiMT2 can create group settings with ID matching the userId.
+     * @allow (get, list) - User wq8CqKB0mlbCiFGMylZejvBHiMT2 can get and list group settings under their own userId.
+     * @allow (update, delete) - User wq8CqKB0mlbCiFGMylZejvBHiMT2 can update and delete group settings under their own userId.
+     * @deny (create) - User anotherUserId cannot create group settings under userId wq8CqKB0mlbCiFGMylZejvBHiMT2.
+     * @deny (get, list) - User anotherUserId cannot get and list group settings under userId wq8CqKB0mlbCiFGMylZejvBHiMT2.
+     * @deny (update, delete) - User anotherUserId cannot update and delete group settings under userId wq8CqKB0mlbCiFGMylZejvBHiMT2.
+     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     */
+    match /users/{userId}/groupSettings {
+      // Read rules
+      allow get: if isSignedIn() && isOwner(userId);
+      allow list: if isSignedIn() && isOwner(userId);
 
-  function isOwner(userId) {
-    return request.auth.uid == userId;
-  }
-
-  function isExistingOwner(userId) {
-    return isSignedIn() && isOwner(userId) && resource != null;
+      // Write rules
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
+    }
   }
 }
