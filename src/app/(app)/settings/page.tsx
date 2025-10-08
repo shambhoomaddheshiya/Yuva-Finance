@@ -7,7 +7,7 @@ import * as z from 'zod';
 import { Loader2 } from 'lucide-react';
 import { collection, query, doc } from 'firebase/firestore';
 
-import { useCollection } from '@/firebase/firestore/use-collection';
+import { useDoc } from '@/firebase/firestore/use-doc';
 import { useToast } from '@/hooks/use-toast';
 import type { GroupSettings } from '@/types';
 import { useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase } from '@/firebase';
@@ -28,9 +28,8 @@ export default function SettingsPage() {
   const { user } = useUser();
   const firestore = useFirestore();
 
-  const settingsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/groupSettings`)) : null, [user, firestore]);
-  const { data: settingsData, isLoading: loading } = useCollection<GroupSettings>(settingsRef);
-  const settings = settingsData?.[0];
+  const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings/settings`) : null, [user, firestore]);
+  const { data: settings, isLoading: loading } = useDoc<GroupSettings>(settingsRef);
 
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);

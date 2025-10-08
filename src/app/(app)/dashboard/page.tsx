@@ -7,7 +7,8 @@ import { ArrowDown, ArrowUp, Banknote, Users, Percent, Calendar } from 'lucide-r
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { collection, query } from 'firebase/firestore';
+import { useDoc } from '@/firebase/firestore/use-doc';
+import { collection, query, doc } from 'firebase/firestore';
 
 function StatCard({
   title,
@@ -46,15 +47,14 @@ export default function DashboardPage() {
   const { user } = useUser();
   const firestore = useFirestore();
 
-  const settingsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/groupSettings`)) : null, [user, firestore]);
+  const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings/settings`) : null, [user, firestore]);
   const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
   const transactionsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
 
-  const { data: settingsData, isLoading: settingsLoading } = useCollection<GroupSettings>(settingsRef);
+  const { data: settings, isLoading: settingsLoading } = useDoc<GroupSettings>(settingsRef);
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
   const { data: transactions, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
   
-  const settings = settingsData?.[0];
   const loading = settingsLoading || membersLoading || txLoading;
   
   const totalDeposited = transactions ? Object.values(transactions).filter(t => t.type === 'deposit').reduce((acc, t) => acc + t.amount, 0) : 0;

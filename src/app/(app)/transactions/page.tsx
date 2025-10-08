@@ -5,13 +5,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp } from 'lucide-react';
-import { collection, doc, getDoc, query, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, query, updateDoc, writeBatch } from 'firebase/firestore';
 import { format } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
 import type { Member, Transaction } from '@/types';
-import { useUser, useFirestore, addDocumentNonBlocking, useMemoFirebase } from '@/firebase';
+import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 
 
 import { Button } from '@/components/ui/button';
@@ -55,6 +55,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
+import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 const transactionSchema = z.object({
   memberId: z.string().nonempty('Please select a member.'),
@@ -84,11 +85,11 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
     setIsLoading(true);
     try {
-      const memberRef = doc(firestore, `users/${user.uid}/members`, values.memberId);
-      const memberSnapshot = await getDoc(memberRef);
+      const memberDocRef = doc(firestore, `users/${user.uid}/members`, values.memberId);
+      const memberSnapshot = await getDoc(memberDocRef);
       if (!memberSnapshot.exists()) throw new Error('Selected member not found.');
       
-      const memberData: Member = memberSnapshot.data() as Member;
+      const memberData = memberSnapshot.data() as Member;
       const newBalance = values.type === 'deposit'
         ? memberData.currentBalance + values.amount
         : memberData.currentBalance - values.amount;
@@ -98,7 +99,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
       }
 
       const txsRef = collection(firestore, `users/${user.uid}/transactions`);
-      const newTxId = doc(txsRef).id;
+      const newTxRef = doc(txsRef);
 
       const newTransaction: Omit<Transaction, 'id'> & { balance: number } = {
         memberId: values.memberId,
@@ -109,19 +110,17 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         balance: newBalance,
       };
 
-      // Since we are doing a multi-path update, we can't use the non-blocking helpers easily.
-      // For simplicity, we'll do this directly but ideally this would be a transaction or batched write.
-      const transactionDocRef = doc(txsRef, newTxId);
-      addDocumentNonBlocking(txsRef, newTransaction);
-
-
       const memberUpdateData: Partial<Member> = {
         currentBalance: newBalance,
         totalDeposited: memberData.totalDeposited + (values.type === 'deposit' ? values.amount : 0),
         totalWithdrawn: memberData.totalWithdrawn + (values.type === 'withdrawal' ? values.amount : 0),
       };
+      
+      const batch = writeBatch(firestore);
+      batch.set(newTxRef, newTransaction);
+      batch.update(memberDocRef, memberUpdateData);
+      await batch.commit();
 
-      await updateDoc(memberRef, memberUpdateData);
 
       toast({
         title: 'Success!',
