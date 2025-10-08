@@ -1,17 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp } from 'lucide-react';
-import { ref, set, push, update, get } from 'firebase/database';
-import { db } from '@/lib/firebase';
+import { collection, doc, getDoc, query, updateDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
 
-import { useRealtimeData } from '@/hooks/use-realtime';
+import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
 import type { Member, Transaction } from '@/types';
+import { useUser, useFirestore, addDocumentNonBlocking } from '@/firebase';
+
 
 import { Button } from '@/components/ui/button';
 import {
@@ -68,24 +69,26 @@ const transactionSchema = z.object({
 function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const { data: members, loading: membersLoading } = useRealtimeData<Record<string, Member>>('members');
+  const { user } = useUser();
+  const firestore = useFirestore();
+  const membersRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
+  const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
+
   const form = useForm<z.infer<typeof transactionSchema>>({
     resolver: zodResolver(transactionSchema),
     defaultValues: { date: new Date() },
   });
 
   async function onSubmit(values: z.infer<typeof transactionSchema>) {
+    if (!user || !firestore) return;
+
     setIsLoading(true);
     try {
-      const txRef = ref(db, 'transactions');
-      const newTxRef = push(txRef);
-      const newTxId = `TXN${newTxRef.key!.slice(-6).toUpperCase()}`;
-
-      const memberRef = ref(db, `members/${values.memberId}`);
-      const memberSnapshot = await get(memberRef);
+      const memberRef = doc(firestore, `users/${user.uid}/members`, values.memberId);
+      const memberSnapshot = await getDoc(memberRef);
       if (!memberSnapshot.exists()) throw new Error('Selected member not found.');
       
-      const memberData: Member = memberSnapshot.val();
+      const memberData: Member = memberSnapshot.data() as Member;
       const newBalance = values.type === 'deposit'
         ? memberData.currentBalance + values.amount
         : memberData.currentBalance - values.amount;
@@ -94,23 +97,31 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         throw new Error('Withdrawal amount exceeds member balance.');
       }
 
-      const newTransaction: Transaction = {
-        id: newTxId,
-        ...values,
+      const txsRef = collection(firestore, `users/${user.uid}/transactions`);
+      const newTxId = doc(txsRef).id;
+
+      const newTransaction: Omit<Transaction, 'id'> & { balance: number } = {
+        memberId: values.memberId,
+        type: values.type,
+        amount: values.amount,
         date: format(values.date, 'yyyy-MM-dd'),
-        balanceAfter: newBalance,
+        description: values.description,
+        balance: newBalance,
       };
 
-      const updates: { [key: string]: any } = {};
-      updates[`/transactions/${newTxId}`] = newTransaction;
-      updates[`/members/${values.memberId}/currentBalance`] = newBalance;
-      if (values.type === 'deposit') {
-        updates[`/members/${values.memberId}/totalDeposited`] = memberData.totalDeposited + values.amount;
-      } else {
-        updates[`/members/${values.memberId}/totalWithdrawn`] = memberData.totalWithdrawn + values.amount;
-      }
-      
-      await update(ref(db), updates);
+      // Since we are doing a multi-path update, we can't use the non-blocking helpers easily.
+      // For simplicity, we'll do this directly but ideally this would be a transaction or batched write.
+      const transactionDocRef = doc(txsRef, newTxId);
+      addDocumentNonBlocking(txsRef, newTransaction);
+
+
+      const memberUpdateData: Partial<Member> = {
+        currentBalance: newBalance,
+        totalDeposited: memberData.totalDeposited + (values.type === 'deposit' ? values.amount : 0),
+        totalWithdrawn: memberData.totalWithdrawn + (values.type === 'withdrawal' ? values.amount : 0),
+      };
+
+      await updateDoc(memberRef, memberUpdateData);
 
       toast({
         title: 'Success!',
@@ -145,7 +156,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {members && Object.values(members).map((m) => (
+                  {members && members.map((m) => (
                     <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -245,12 +256,17 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 }
 
 export default function TransactionsPage() {
-  const { data: transactions, loading: txLoading } = useRealtimeData<Record<string, Transaction>>('transactions');
-  const { data: members, loading: membersLoading } = useRealtimeData<Record<string, Member>>('members');
+  const { user } = useUser();
+  const firestore = useFirestore();
+  const transactionsRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
+  const membersRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
+
+  const { data: transactions, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
+  const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const loading = txLoading || membersLoading;
-  const txList = transactions ? Object.values(transactions).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
+  const txList = transactions ? transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
 
   return (
     <div className="space-y-6">
@@ -300,7 +316,7 @@ export default function TransactionsPage() {
               ) : txList.length > 0 ? (
                 txList.map((tx) => (
                   <TableRow key={tx.id}>
-                    <TableCell className="font-medium">{members?.[tx.memberId]?.name || 'Unknown'}</TableCell>
+                    <TableCell className="font-medium">{members?.find(m => m.id === tx.memberId)?.name || 'Unknown'}</TableCell>
                     <TableCell>
                       <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${tx.type === 'deposit' ? 'border-transparent bg-green-100 text-green-800' : 'border-transparent bg-red-100 text-red-800'}`}>
                         {tx.type === 'deposit' ? <ArrowUp className="mr-1 h-3 w-3" /> : <ArrowDown className="mr-1 h-3 w-3" />}

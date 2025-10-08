@@ -2,10 +2,13 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useRealtimeData } from '@/hooks/use-realtime';
 import { GroupSettings, Member, Transaction } from '@/types';
 import { ArrowDown, ArrowUp, Banknote, Users, Percent, Calendar } from 'lucide-react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
+import { useUser, useFirestore } from '@/firebase';
+import { useCollection } from '@/firebase/firestore/use-collection';
+import { useMemo } from 'react';
+import { collection, query } from 'firebase/firestore';
 
 function StatCard({
   title,
@@ -41,10 +44,18 @@ function StatCard({
 }
 
 export default function DashboardPage() {
-  const { data: settings, loading: settingsLoading } = useRealtimeData<GroupSettings>('groupSettings');
-  const { data: members, loading: membersLoading } = useRealtimeData<Record<string, Member>>('members');
-  const { data: transactions, loading: txLoading } = useRealtimeData<Record<string, Transaction>>('transactions');
+  const { user } = useUser();
+  const firestore = useFirestore();
 
+  const settingsRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/groupSettings`)) : null, [user, firestore]);
+  const membersRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
+  const transactionsRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
+
+  const { data: settingsData, isLoading: settingsLoading } = useCollection<GroupSettings>(settingsRef);
+  const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
+  const { data: transactions, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
+  
+  const settings = settingsData?.[0];
   const loading = settingsLoading || membersLoading || txLoading;
   
   const totalDeposited = transactions ? Object.values(transactions).filter(t => t.type === 'deposit').reduce((acc, t) => acc + t.amount, 0) : 0;
@@ -68,7 +79,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Total Members"
-          value={settings?.totalMembers || Object.keys(members || {}).length || '...'}
+          value={settings ? settings.totalMembers : (members?.length || '...')}
           icon={Users}
           loading={loading}
           description="Number of active members"
@@ -132,7 +143,7 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-4">
                 {transactions && members ? (
-                  Object.values(transactions)
+                  transactions
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                     .slice(0, 5)
                     .map((tx) => (
@@ -143,7 +154,7 @@ export default function DashboardPage() {
                             <ArrowDown className="h-6 w-6 text-red-500 mr-4"/>
                           )}
                         <div className="flex-1 space-y-1">
-                          <p className="text-sm font-medium leading-none">{members[tx.memberId]?.name || 'Unknown Member'}</p>
+                          <p className="text-sm font-medium leading-none">{members.find(m => m.id === tx.memberId)?.name || 'Unknown Member'}</p>
                           <p className="text-sm text-muted-foreground">{tx.description}</p>
                         </div>
                         <div className={`font-medium ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>

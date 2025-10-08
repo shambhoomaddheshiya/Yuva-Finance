@@ -17,7 +17,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import {
   Card,
@@ -27,7 +27,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { auth } from '@/lib/firebase';
+import { initiateEmailSignIn } from '@/firebase/non-blocking-login';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Invalid email address.' }),
@@ -35,7 +35,7 @@ const formSchema = z.object({
 });
 
 export default function LoginPage() {
-  const { signIn } = useAuth();
+  const auth = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -50,7 +50,7 @@ export default function LoginPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
-      await signIn(auth, values.email, values.password);
+      initiateEmailSignIn(auth, values.email, values.password);
       // The redirect is handled by the layout
     } catch (error: any) {
       toast({
@@ -59,7 +59,7 @@ export default function LoginPage() {
         description: error.message || 'An unexpected error occurred.',
       });
     } finally {
-      setIsLoading(false);
+      // Don't set loading to false immediately to allow time for redirect
     }
   }
 

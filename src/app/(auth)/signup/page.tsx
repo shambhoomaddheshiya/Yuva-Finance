@@ -6,7 +6,7 @@ import * as z from 'zod';
 import Link from 'next/link';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { auth } from '@/lib/firebase';
+import { useAuth } from '@/firebase';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -18,7 +18,6 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import {
   Card,
@@ -28,6 +27,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { initiateEmailSignUp } from '@/firebase/non-blocking-login';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Invalid email address.' }),
@@ -35,7 +35,7 @@ const formSchema = z.object({
 });
 
 export default function SignUpPage() {
-  const { signUp } = useAuth();
+  const auth = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -50,7 +50,7 @@ export default function SignUpPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
-      await signUp(auth, values.email, values.password);
+      initiateEmailSignUp(auth, values.email, values.password);
       // The redirect is handled by the layout
     } catch (error: any) {
       toast({
@@ -59,7 +59,7 @@ export default function SignUpPage() {
         description: error.message || 'An unexpected error occurred.',
       });
     } finally {
-      setIsLoading(false);
+      // Don't set loading to false immediately to allow time for redirect
     }
   }
 

@@ -1,15 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2 } from 'lucide-react';
-import { ref, set, push } from 'firebase/database';
-import { db } from '@/lib/firebase';
 import { format } from 'date-fns';
+import { collection, doc, query } from 'firebase/firestore';
+import { useUser, useFirestore, addDocumentNonBlocking } from '@/firebase';
 
-import { useRealtimeData } from '@/hooks/use-realtime';
+import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
 import type { Member } from '@/types';
 
@@ -53,20 +53,21 @@ const memberSchema = z.object({
 function AddMemberForm({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const { user } = useUser();
+  const firestore = useFirestore();
+
   const form = useForm<z.infer<typeof memberSchema>>({
     resolver: zodResolver(memberSchema),
     defaultValues: { name: '', phone: '' },
   });
 
   async function onSubmit(values: z.infer<typeof memberSchema>) {
+    if (!user || !firestore) return;
     setIsLoading(true);
     try {
-      const membersRef = ref(db, 'members');
-      const newMemberRef = push(membersRef);
-      const newMemberId = newMemberRef.key;
+      const membersRef = collection(firestore, `users/${user.uid}/members`);
+      const newMemberId = doc(membersRef).id;
       
-      if (!newMemberId) throw new Error("Could not generate member ID.");
-
       const newMember: Member = {
         id: `GS${newMemberId.slice(-4).toUpperCase()}`,
         ...values,
@@ -77,7 +78,7 @@ function AddMemberForm({ onOpenChange }: { onOpenChange: (open: boolean) => void
         interestEarned: 0,
       };
       
-      await set(ref(db, `members/${newMember.id}`), newMember);
+      addDocumentNonBlocking(membersRef, newMember);
 
       toast({
         title: 'Success!',
@@ -137,9 +138,12 @@ function AddMemberForm({ onOpenChange }: { onOpenChange: (open: boolean) => void
 }
 
 export default function MembersPage() {
-  const { data: members, loading } = useRealtimeData<Record<string, Member>>('members');
+  const { user } = useUser();
+  const firestore = useFirestore();
+  const membersRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
+  const { data: memberList, isLoading: loading } = useCollection<Member>(membersRef);
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const memberList = members ? Object.values(members) : [];
 
   return (
     <div className="space-y-6">
@@ -190,7 +194,7 @@ export default function MembersPage() {
                     <TableCell className="text-right"><Skeleton className="h-6 w-20 ml-auto" /></TableCell>
                   </TableRow>
                 ))
-              ) : memberList.length > 0 ? (
+              ) : memberList && memberList.length > 0 ? (
                 memberList.map((member, index) => (
                   <TableRow key={member.id}>
                     <TableCell className="font-medium">

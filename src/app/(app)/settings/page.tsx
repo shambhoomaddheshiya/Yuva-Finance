@@ -1,16 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Loader2 } from 'lucide-react';
-import { ref, set } from 'firebase/database';
-import { db } from '@/lib/firebase';
+import { collection, query, doc } from 'firebase/firestore';
 
-import { useRealtimeData } from '@/hooks/use-realtime';
+import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
 import type { GroupSettings } from '@/types';
+import { useUser, useFirestore, setDocumentNonBlocking } from '@/firebase';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -25,7 +25,13 @@ const settingsSchema = z.object({
 });
 
 export default function SettingsPage() {
-  const { data: settings, loading } = useRealtimeData<GroupSettings>('groupSettings');
+  const { user } = useUser();
+  const firestore = useFirestore();
+
+  const settingsRef = useMemo(() => user && firestore ? query(collection(firestore, `users/${user.uid}/groupSettings`)) : null, [user, firestore]);
+  const { data: settingsData, isLoading: loading } = useCollection<GroupSettings>(settingsRef);
+  const settings = settingsData?.[0];
+
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -44,6 +50,7 @@ export default function SettingsPage() {
   }, [settings, form]);
 
   async function onSubmit(values: z.infer<typeof settingsSchema>) {
+    if (!user || !firestore) return;
     setIsSubmitting(true);
     try {
       if (!settings) throw new Error("Original settings not loaded.");
@@ -53,7 +60,8 @@ export default function SettingsPage() {
         ...values,
       };
 
-      await set(ref(db, 'groupSettings'), updatedSettings);
+      const docRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
+      setDocumentNonBlocking(docRef, updatedSettings, { merge: true });
 
       toast({
         title: 'Settings Saved!',

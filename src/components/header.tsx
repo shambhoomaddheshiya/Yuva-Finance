@@ -1,7 +1,8 @@
 'use client';
 
 import { LogOut, User as UserIcon } from 'lucide-react';
-import { useAuth } from '@/hooks/use-auth';
+import { useUser, useAuth } from '@/firebase';
+import { signOut } from 'firebase/auth';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,8 +16,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { SidebarTrigger, useSidebar } from './ui/sidebar';
 
 export function Header() {
-  const { logout, user } = useAuth();
+  const { user } = useUser();
+  const auth = useAuth();
   const { isMobile } = useSidebar();
+
+  const handleLogout = async () => {
+    await signOut(auth);
+  }
 
   return (
     <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-card px-4 md:px-6">
@@ -45,7 +51,7 @@ export function Header() {
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={logout}>
+          <DropdownMenuItem onClick={handleLogout}>
             <LogOut className="mr-2 h-4 w-4" />
             <span>Log out</span>
           </DropdownMenuItem>
