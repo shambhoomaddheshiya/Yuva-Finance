@@ -6,7 +6,9 @@ import * as z from 'zod';
 import Link from 'next/link';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useAuth } from '@/firebase';
+import { useAuth, useFirestore, setDocumentNonBlocking } from '@/firebase';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc } from 'firebase/firestore';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -27,7 +29,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { initiateEmailSignUp } from '@/firebase/non-blocking-login';
+import { GroupSettings } from '@/types';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Invalid email address.' }),
@@ -36,6 +38,7 @@ const formSchema = z.object({
 
 export default function SignUpPage() {
   const auth = useAuth();
+  const firestore = useFirestore();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -48,9 +51,26 @@ export default function SignUpPage() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (!auth || !firestore) return;
     setIsLoading(true);
     try {
-      initiateEmailSignUp(auth, values.email, values.password);
+      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+      const user = userCredential.user;
+
+      if (user) {
+        // Create default group settings for the new user
+        const settingsRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
+        const defaultSettings: GroupSettings = {
+          groupName: 'My Savings Group',
+          monthlyContribution: 1000,
+          interestRate: 2,
+          totalMembers: 1,
+          totalFund: 0,
+          establishedDate: new Date().toISOString(),
+        };
+        setDocumentNonBlocking(settingsRef, defaultSettings, {});
+      }
+      
       // The redirect is handled by the layout
     } catch (error: any) {
       toast({
@@ -58,6 +78,7 @@ export default function SignUpPage() {
         title: 'Sign Up Failed',
         description: error.message || 'An unexpected error occurred.',
       });
+      setIsLoading(false);
     } finally {
       // Don't set loading to false immediately to allow time for redirect
     }
