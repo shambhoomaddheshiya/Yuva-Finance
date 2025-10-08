@@ -1,0 +1,209 @@
+{
+  "entities": {
+    "Member": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Member",
+      "type": "object",
+      "description": "Represents a member of the group savings system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the member entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the member."
+        },
+        "phone": {
+          "type": "string",
+          "description": "The phone number of the member."
+        },
+        "joinDate": {
+          "type": "string",
+          "description": "The date the member joined the group savings system.",
+          "format": "date-time"
+        },
+        "totalDeposited": {
+          "type": "number",
+          "description": "The total amount deposited by the member."
+        },
+        "totalWithdrawn": {
+          "type": "number",
+          "description": "The total amount withdrawn by the member."
+        },
+        "currentBalance": {
+          "type": "number",
+          "description": "The current balance of the member's account."
+        },
+        "interestEarned": {
+          "type": "number",
+          "description": "The total interest earned by the member."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "phone",
+        "joinDate",
+        "totalDeposited",
+        "totalWithdrawn",
+        "currentBalance",
+        "interestEarned"
+      ]
+    },
+    "Transaction": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Transaction",
+      "type": "object",
+      "description": "Represents a transaction in the group savings system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the transaction entity."
+        },
+        "memberId": {
+          "type": "string",
+          "description": "Reference to Member. (Relationship: Member 1:N Transaction)"
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of transaction (deposit or withdrawal)."
+        },
+        "amount": {
+          "type": "number",
+          "description": "The amount of the transaction."
+        },
+        "date": {
+          "type": "string",
+          "description": "The date of the transaction.",
+          "format": "date-time"
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of the transaction."
+        },
+        "balance": {
+          "type": "number",
+          "description": "The balance after the transaction."
+        }
+      },
+      "required": [
+        "id",
+        "memberId",
+        "type",
+        "amount",
+        "date",
+        "description",
+        "balance"
+      ]
+    },
+    "GroupSettings": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "GroupSettings",
+      "type": "object",
+      "description": "Represents the settings for the group savings system.",
+      "properties": {
+        "groupName": {
+          "type": "string",
+          "description": "The name of the group."
+        },
+        "monthlyContribution": {
+          "type": "number",
+          "description": "The monthly contribution amount."
+        },
+        "interestRate": {
+          "type": "number",
+          "description": "The interest rate."
+        },
+        "totalMembers": {
+          "type": "number",
+          "description": "The total number of members in the group."
+        },
+        "totalFund": {
+          "type": "number",
+          "description": "The total fund amount."
+        },
+        "establishedDate": {
+          "type": "string",
+          "description": "The date the group was established.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "groupName",
+        "monthlyContribution",
+        "interestRate",
+        "totalMembers",
+        "totalFund",
+        "establishedDate"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}/members/{memberId}",
+        "definition": {
+          "entityName": "Member",
+          "schema": {
+            "$ref": "#/backend/entities/Member"
+          },
+          "description": "Stores member data for a specific user. This path enforces that only the authenticated user can manage their own member data. Includes denormalized 'groupSettings' for authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user."
+            },
+            {
+              "name": "memberId",
+              "description": "The unique ID of the member."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/transactions/{transactionId}",
+        "definition": {
+          "entityName": "Transaction",
+          "schema": {
+            "$ref": "#/backend/entities/Transaction"
+          },
+          "description": "Stores transaction data for a specific user and member. Ensures that only the authenticated user can manage their own transaction data. Includes denormalized 'groupSettings' for authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user."
+            },
+            {
+              "name": "transactionId",
+              "description": "The unique ID of the transaction."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/groupSettings",
+        "definition": {
+          "entityName": "GroupSettings",
+          "schema": {
+            "$ref": "#/backend/entities/GroupSettings"
+          },
+          "description": "Stores the group settings for a specific user.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore data structure is designed to manage member data, transactions, and group settings for the Sahayak Savings application. It leverages path-based ownership for user data and denormalization where needed to ensure authorization independence. The structure supports secure list operations and is designed to be easily debuggable.\n\nThe core principle is that each user has their own private data scope under `/users/{userId}`. This ensures that data access is restricted to the owning user by default.\n\n1.  **User Authentication and Data Segregation:** User authentication is managed via Firebase Authentication. User-specific data (members and transactions) are stored under the `/users/{userId}` collection. This structure ensures that only the authenticated user can access their own data.\n\n2.  **Authorization Independence (Denormalization):** To ensure authorization independence and enable atomic operations, the group settings are duplicated into the members and transaction documents. This allows security rules to be written without needing to `get()` group settings data during member or transaction creation or modification.\n\n3.  **QAPs (Rules are not Filters):** The path-based ownership (`/users/{userId}/members/{memberId}`) ensures secure list operations. A user can only list members or transactions within their own `userId` scope. The structure inherently prevents listing data across different users, thus satisfying QAPs."
+  }
+}
