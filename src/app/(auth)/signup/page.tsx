@@ -6,9 +6,9 @@ import * as z from 'zod';
 import Link from 'next/link';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useAuth, useFirestore, setDocumentNonBlocking } from '@/firebase';
+import { useAuth, useFirestore } from '@/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -64,11 +64,11 @@ export default function SignUpPage() {
           groupName: 'My Savings Group',
           monthlyContribution: 1000,
           interestRate: 2,
-          totalMembers: 1,
+          totalMembers: 0,
           totalFund: 0,
           establishedDate: new Date().toISOString(),
         };
-        setDocumentNonBlocking(settingsRef, defaultSettings, {});
+        await setDoc(settingsRef, defaultSettings);
       }
       
       // The redirect is handled by the layout

@@ -53,6 +53,7 @@ const createDefaultSettings = async (firestore: any, userId: string) => {
     const docSnap = await getDoc(userDocRef);
 
     if (!docSnap.exists()) {
+      console.log(`Creating default settings for user ${userId}...`);
       const defaultSettings: GroupSettings = {
         groupName: 'My Savings Group',
         monthlyContribution: 1000,
@@ -62,6 +63,8 @@ const createDefaultSettings = async (firestore: any, userId: string) => {
         establishedDate: new Date().toISOString(),
       };
       await setDoc(userDocRef, defaultSettings);
+    } else {
+        console.log(`Settings already exist for user ${userId}.`);
     }
 }
 
