@@ -1,120 +1,103 @@
 /**
- * @fileoverview Firestore Security Rules for Sahayak Savings application.
+ * @fileOverview Firestore Security Rules for Sahayak Savings application.
  *
  * Core Philosophy:
- * This ruleset enforces a strict user-ownership model where each user can only
- * access data associated with their own user ID. All data is nested under
- * /users/{userId}, ensuring complete data isolation between users.
+ * This ruleset enforces a strict user-ownership model. Each user has a private data scope under `/users/{userId}`.
+ * Only the authenticated user can access their own data.
  *
  * Data Structure:
- * - /users/{userId}/members/{memberId}: Stores individual member data for each user.
- * - /users/{userId}/transactions/{transactionId}: Stores transaction history for each member.
- * - /users/{userId}/groupSettings/settings: Stores group settings for each user.
+ * - `/users/{userId}/members/{memberId}`: Stores member data, accessible only by the owning user.
+ * - `/users/{userId}/transactions/{transactionId}`: Stores transaction data, accessible only by the owning user.
+ * - `/users/{userId}/groupSettings`: Stores group settings, accessible only by the owning user.
  *
  * Key Security Decisions:
- * - User listing is implicitly disallowed by the data structure.
- * - Data validation is relaxed to allow for rapid prototyping but critical
- *   authorization fields (e.g., userId) are strictly validated.
+ * - User data is segregated by `userId` in the path, enforcing ownership.
+ * - List operations are secured by path-based ownership, preventing cross-user listing.
  *
  * Denormalization for Authorization:
- * The `groupSettings` is assumed to be denormalized into the `members` and
- * `transactions` documents.
+ *  N/A - The authorization does not rely on denormalization.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Checks if the request is made by the owner of the resource.
-     * @param {string} userId - The user ID to compare against the request's auth UID.
-     * @return {bool} - True if the user is the owner, false otherwise.
-     */
-    function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
-    }
-
-    /**
-     * @description Checks if the request is made by the owner of the resource and the resource exists.
-     * @param {string} userId - The user ID to compare against the request's auth UID.
-     * @return {bool} - True if the user is the owner and the resource exists, false otherwise.
-     */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && exists(resource);
-    }
-
-    /**
-     * @description Checks if the user is signed in.
-     * @return {bool} - True if the user is signed in, false otherwise.
+     * @description Checks if the request is authenticated.
      */
     function isSignedIn() {
       return request.auth != null;
     }
 
     /**
-     * @description Enforces user-ownership for members.
+     * @description Checks if the requesting user ID matches the resource's user ID.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the user is the owner and the document exists.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && exists(resource.data);
+    }
+
+    /**
+     * @description
+     * - Protects access to user-specific member data.
+     * - Enforces that only the authenticated user can manage their own member data.
      * @path /users/{userId}/members/{memberId}
-     * @allow (create) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can create a member with userId 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @deny (create) User 'otherUserId' cannot create a member with userId 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @allow (get) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can get their own member data.
-     * @deny (get) User 'otherUserId' cannot get member data under 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @allow (list) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can list their own members.
-     * @deny (list) User 'otherUserId' cannot list members under 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @allow (update) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can update their own member data.
-     * @deny (update) User 'otherUserId' cannot update member data under 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @allow (delete) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can delete their own member data.
-     * @deny (delete) User 'otherUserId' cannot delete member data under 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     * @allow (create) User 'user123' can create a member document with memberId 'member456' under their userId 'user123'.
+     * @deny (create) User 'userABC' cannot create a member document under userId 'user123'.
+     * @principle Enforces document ownership for writes.
      */
     match /users/{userId}/members/{memberId} {
+      // Read rules
       allow get: if isOwner(userId);
       allow list: if isOwner(userId);
-      allow create: if isSignedIn() && isOwner(userId);
+
+      // Write rules
+      allow create: if isOwner(userId);
       allow update: if isExistingOwner(userId);
       allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Enforces user-ownership for transactions.
+     * @description
+     * - Protects access to user-specific transaction data.
+     * - Enforces that only the authenticated user can manage their own transaction data.
      * @path /users/{userId}/transactions/{transactionId}
-     * @allow (create) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can create a transaction with userId 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @deny (create) User 'otherUserId' cannot create a transaction with userId 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @allow (get) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can get their own transaction data.
-     * @deny (get) User 'otherUserId' cannot get transaction data under 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @allow (list) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can list their own transactions.
-     * @deny (list) User 'otherUserId' cannot list transactions under 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @allow (update) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can update their own transaction data.
-     * @deny (update) User 'otherUserId' cannot update transaction data under 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @allow (delete) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can delete their own transaction data.
-     * @deny (delete) User 'otherUserId' cannot delete transaction data under 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     * @allow (create) User 'user123' can create a transaction document with transactionId 'txn789' under their userId 'user123'.
+     * @deny (create) User 'userABC' cannot create a transaction document under userId 'user123'.
+     * @principle Enforces document ownership for writes.
      */
     match /users/{userId}/transactions/{transactionId} {
+      // Read rules
       allow get: if isOwner(userId);
       allow list: if isOwner(userId);
-      allow create: if isSignedIn() && isOwner(userId);
+
+      // Write rules
+      allow create: if isOwner(userId);
       allow update: if isExistingOwner(userId);
       allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Enforces user-ownership for group settings.
-     * @path /users/{userId}/groupSettings/settings
-     * @allow (create) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can create group settings with userId 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @deny (create) User 'otherUserId' cannot create group settings with userId 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @allow (get) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can get their own group settings.
-     * @deny (get) User 'otherUserId' cannot get group settings under 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @allow (list) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can list their own group settings.
-     * @deny (list) User 'otherUserId' cannot list group settings under 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @allow (update) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can update their own group settings.
-     * @deny (update) User 'otherUserId' cannot update group settings under 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @allow (delete) User 'wq8CqKB0mlbCiFGMylZejvBHiMT2' can delete their own group settings.
-     * @deny (delete) User 'otherUserId' cannot delete group settings under 'wq8CqKB0mlbCiFGMylZejvBHiMT2'.
-     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     * @description
+     * - Protects access to user-specific group settings.
+     * - Enforces that only the authenticated user can manage their own group settings.
+     * @path /users/{userId}/groupSettings
+     * @allow (create) User 'user123' can create group settings under their userId 'user123'.
+     * @deny (create) User 'userABC' cannot create group settings under userId 'user123'.
+     * @principle Enforces document ownership for writes.
      */
-    match /users/{userId}/groupSettings/settings {
+    match /users/{userId}/groupSettings {
+      // Read rules
       allow get: if isOwner(userId);
       allow list: if isOwner(userId);
-      allow create: if isSignedIn() && isOwner(userId);
+
+      // Write rules
+      allow create: if isOwner(userId);
       allow update: if isExistingOwner(userId);
       allow delete: if isExistingOwner(userId);
     }
