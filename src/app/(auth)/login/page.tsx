@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { GoogleAuthProvider, signInWithPopup, UserCredential, signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, getDocs, query } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -29,7 +29,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { GroupSettings, Member } from '@/types';
+import { GroupSettings } from '@/types';
 import { Separator } from '@/components/ui/separator';
 
 const formSchema = z.object({
@@ -54,27 +54,12 @@ const createDefaultSettings = async (firestore: any, userId: string) => {
 
     if (!docSnap.exists()) {
       console.log(`Creating default settings for user ${userId}...`);
-      
-      const membersRef = collection(firestore, `users/${userId}/members`);
-      const membersQuery = query(membersRef);
-      const membersSnapshot = await getDocs(membersQuery);
-      
-      let totalFund = 0;
-      let totalMembers = 0;
-      if (!membersSnapshot.empty) {
-        totalMembers = membersSnapshot.size;
-        membersSnapshot.forEach(doc => {
-          const member = doc.data() as Member;
-          totalFund += member.currentBalance;
-        });
-      }
-
       const defaultSettings: GroupSettings = {
         groupName: 'My Savings Group',
         monthlyContribution: 1000,
         interestRate: 2,
-        totalMembers: totalMembers,
-        totalFund: totalFund,
+        totalMembers: 0,
+        totalFund: 0, // Initialize to 0. It will be updated by transactions.
         establishedDate: new Date().toISOString(),
       };
       await setDoc(settingsDocRef, defaultSettings);
