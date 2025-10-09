@@ -78,7 +78,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Total Members"
-          value={settings ? settings.totalMembers : (members?.length || '...')}
+          value={members ? members.length : '...'}
           icon={Users}
           loading={loading}
           description="Number of active members"
@@ -141,7 +141,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {transactions && members ? (
+                {transactions && members && transactions.length > 0 ? (
                   transactions
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                     .slice(0, 5)

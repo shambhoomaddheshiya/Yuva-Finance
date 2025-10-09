@@ -6,12 +6,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
-import { collection, doc, query, where, writeBatch, getDocs, deleteDoc } from 'firebase/firestore';
+import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc } from 'firebase/firestore';
 import { useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
-import type { Member, Transaction } from '@/types';
+import type { Member, Transaction, GroupSettings } from '@/types';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -93,76 +93,69 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
     if (!user || !firestore) return;
     setIsLoading(true);
     try {
-        const membersRef = collection(firestore, `users/${user.uid}/members`);
-      if (isEdit && member) {
-        if (member.id !== values.id) {
-          // ID has changed, so we need to create a new doc and delete the old one
-          const batch = writeBatch(firestore);
-
-          // 1. Create new member document
-          const newMemberDocRef = doc(firestore, `users/${user.uid}/members`, values.id);
-          const newMemberData: Member = {
-            ...member, // carry over balance etc.
-            id: values.id,
-            name: values.name,
-            phone: values.phone,
-            joinDate: values.joinDate.toISOString(),
-          };
-          batch.set(newMemberDocRef, newMemberData);
-
-          // 2. Find and update transactions with the old memberId
-          const transactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('memberId', '==', member.id));
-          const transactionsSnapshot = await getDocs(transactionsQuery);
-          transactionsSnapshot.forEach(txDoc => {
-            batch.update(txDoc.ref, { memberId: values.id });
-          });
-
-          // 3. Delete the old member document
-          const oldMemberDocRef = doc(firestore, `users/${user.uid}/members`, member.id);
-          batch.delete(oldMemberDocRef);
-
-          await batch.commit();
-
-          toast({
-            title: 'Success!',
-            description: 'Member ID has been changed and transactions updated.',
-          });
-
-        } else {
-            // Update existing member, ID has not changed
-            const memberRef = doc(membersRef, member.id);
-            const updatePayload: Partial<Member> = {
-              name: values.name,
-              phone: values.phone,
-              joinDate: values.joinDate.toISOString()
-            }
-            updateDocumentNonBlocking(memberRef, updatePayload);
-            toast({
-              title: 'Success!',
-              description: 'Member has been updated.',
-            });
-        }
-      } else {
-        // Add new member
-        const newMember: Member = {
-          ...values,
-          joinDate: values.joinDate.toISOString(),
-          totalDeposited: 0,
-          totalWithdrawn: 0,
-          currentBalance: 0,
-          interestEarned: 0,
-        };
-        const newMemberRef = doc(membersRef, values.id);
-        setDocumentNonBlocking(newMemberRef, newMember, {});
+        const batch = writeBatch(firestore);
+        const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
         
-        toast({
-          title: 'Success!',
-          description: 'New member has been added.',
-        });
-      }
+        if (isEdit && member) {
+            // Logic for editing a member
+            if (member.id !== values.id) {
+                // ID has changed, complex update (migrate data)
+                const newMemberDocRef = doc(firestore, `users/${user.uid}/members`, values.id);
+                const newMemberData: Member = {
+                    ...member,
+                    id: values.id, name: values.name, phone: values.phone, joinDate: values.joinDate.toISOString(),
+                };
+                batch.set(newMemberDocRef, newMemberData);
+
+                const transactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('memberId', '==', member.id));
+                const transactionsSnapshot = await getDocs(transactionsQuery);
+                transactionsSnapshot.forEach(txDoc => {
+                    batch.update(txDoc.ref, { memberId: values.id });
+                });
+
+                const oldMemberDocRef = doc(firestore, `users/${user.uid}/members`, member.id);
+                batch.delete(oldMemberDocRef);
+                
+                toast({ title: 'Success!', description: 'Member ID changed and transactions updated.' });
+
+            } else {
+                // ID is the same, simple update
+                const memberRef = doc(firestore, `users/${user.uid}/members`, member.id);
+                const updatePayload: Partial<Member> = {
+                    name: values.name, phone: values.phone, joinDate: values.joinDate.toISOString()
+                };
+                batch.update(memberRef, updatePayload);
+                toast({ title: 'Success!', description: 'Member has been updated.' });
+            }
+        } else {
+            // Logic for adding a new member
+            const newMember: Member = {
+                ...values, joinDate: values.joinDate.toISOString(),
+                totalDeposited: 0, totalWithdrawn: 0, currentBalance: 0, interestEarned: 0,
+            };
+            const newMemberRef = doc(firestore, `users/${user.uid}/members`, values.id);
+            batch.set(newMemberRef, newMember);
+
+            // Also update totalMembers in groupSettings
+            const settingsSnap = await getDoc(settingsDocRef);
+            if (settingsSnap.exists()) {
+                const settingsData = settingsSnap.data() as GroupSettings;
+                batch.update(settingsDocRef, { totalMembers: (settingsData.totalMembers || 0) + 1 });
+            } else {
+                // If for some reason settings don't exist, create them
+                 const defaultSettings: GroupSettings = {
+                    groupName: 'My Savings Group', monthlyContribution: 1000, interestRate: 2,
+                    totalMembers: 1, totalFund: 0, establishedDate: new Date().toISOString(),
+                };
+                batch.set(settingsDocRef, defaultSettings);
+            }
+            toast({ title: 'Success!', description: 'New member has been added.' });
+        }
       
+      await batch.commit();
       form.reset();
       onOpenChange(false);
+
     } catch (error: any) {
       toast({
         variant: 'destructive',
@@ -184,7 +177,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
                 <FormItem>
                 <FormLabel>Member ID</FormLabel>
                 <FormControl>
-                    <Input placeholder="MEMBER-001" {...field} />
+                    <Input placeholder="MEMBER-001" {...field} disabled={isEdit} />
                 </FormControl>
                 <FormMessage />
                 </FormItem>
@@ -374,6 +367,16 @@ export default function MembersPage() {
         transactionsSnapshot.forEach(doc => {
             batch.delete(doc.ref);
         });
+
+        // 3. Update totalMembers in groupSettings
+        const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
+        const settingsSnap = await getDoc(settingsDocRef);
+        if (settingsSnap.exists()) {
+            const settingsData = settingsSnap.data() as GroupSettings;
+            const newTotalMembers = (settingsData.totalMembers || 0) > 0 ? settingsData.totalMembers - 1 : 0;
+            batch.update(settingsDocRef, { totalMembers: newTotalMembers });
+        }
+
 
         await batch.commit();
 
