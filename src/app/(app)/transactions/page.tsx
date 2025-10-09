@@ -91,19 +91,32 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
     setIsLoading(true);
     try {
         const memberDocRef = doc(firestore, `users/${user.uid}/members`, values.memberId);
-        const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings/settings`);
+        const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
 
         const batch = writeBatch(firestore);
-        const [memberSnapshot, settingsSnapshot] = await Promise.all([
-            getDoc(memberDocRef),
-            getDoc(settingsDocRef)
-        ]);
         
+        const memberSnapshot = await getDoc(memberDocRef);
         if (!memberSnapshot.exists()) throw new Error('Selected member not found.');
-        if (!settingsSnapshot.exists()) throw new Error('Group settings not found.');
+
+        let settingsSnapshot = await getDoc(settingsDocRef);
+        let settingsData: GroupSettings;
+        
+        if (!settingsSnapshot.exists()) {
+          // If settings don't exist, create them within the same batch.
+          settingsData = {
+            groupName: 'My Savings Group',
+            monthlyContribution: 1000,
+            interestRate: 2,
+            totalMembers: 0,
+            totalFund: 0,
+            establishedDate: new Date().toISOString(),
+          };
+          batch.set(settingsDocRef, settingsData);
+        } else {
+          settingsData = settingsSnapshot.data() as GroupSettings;
+        }
 
         const memberData = memberSnapshot.data() as Member;
-        const settingsData = settingsSnapshot.data() as GroupSettings;
 
         let newBalance, newTotalDeposited, newTotalWithdrawn;
 
