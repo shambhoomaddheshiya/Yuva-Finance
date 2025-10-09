@@ -2,22 +2,26 @@
  * @fileoverview Firestore Security Rules for Sahayak Savings App
  *
  * Core Philosophy:
- * This ruleset enforces a strict user-ownership model where each user has exclusive
- * access to their own data scope under `/users/{userId}`. This design ensures that
- * users can only manage their own group settings, members, and transactions.
+ * This ruleset enforces a strict user-ownership model where each user can only
+ * access data under their own user ID.
  *
  * Data Structure:
- * - /users/{userId}/groupSettings: Stores group settings for each user.
- * - /users/{userId}/members/{memberId}: Stores member data.
- * - /users/{userId}/transactions/{transactionId}: Stores transaction data.
+ * All data is nested under /users/{userId}, which includes members, transactions,
+ * and group settings. This ensures that each user's data is isolated from others.
  *
  * Key Security Decisions:
- * - User data is segregated by `userId`, preventing cross-user data access.
- * - List operations are secured by path-based ownership: a user can only list
- *   resources within their own `userId` scope.
- * - No public read access is granted to any collection containing user-specific private data.
- * - Group settings are managed within the user's scope.
- * - All writes require authentication and authorization.
+ * - Strict user-ownership: Only the authenticated user can create, read, update,
+ *   or delete data under their /users/{userId} path.
+ * - No listing of all users: The rules do not allow listing all users in the
+ *   database to protect user privacy.
+ * - Group settings are owned and managed by each user for their groups.
+ *
+ * Denormalization for Authorization:
+ * To achieve authorization independence and avoid costly `get()` operations,
+ * authorization-critical data is denormalized (duplicated) across documents.
+ * For example, group settings might be duplicated into member and transaction documents
+ * to allow security rules to be enforced without needing to fetch the group settings
+ * during member or transaction creation or modification.
  */
 rules_version = '2';
 service cloud.firestore {
@@ -25,6 +29,7 @@ service cloud.firestore {
 
     /**
      * @description Checks if the request is authenticated.
+     * @return {boolean} True if the request is authenticated, false otherwise.
      */
     function isSignedIn() {
       return request.auth != null;
@@ -32,75 +37,40 @@ service cloud.firestore {
 
     /**
      * @description Checks if the authenticated user ID matches the provided user ID.
-     * @param {string} userId - The user ID to compare against the authenticated user ID.
+     * @param {string} userId The user ID to check against.
+     * @return {boolean} True if the user ID matches, false otherwise.
      */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
     /**
-     * @description Checks if the authenticated user is the owner of the existing document.
-     * @param {string} userId - The user ID to compare against the authenticated user ID.
+     * @description Checks if the authenticated user is the owner and the resource exists.
+     * @param {string} userId The user ID to check against.
+     * @return {boolean} True if the user is the owner and the resource exists, false otherwise.
      */
     function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
+      return isOwner(userId) && existsAfter(/databases/$(database)/documents/users/$(userId)/members/$(memberId));
     }
 
-    /**
-     * @description Rules for managing group settings.
-     * @path /users/{userId}/groupSettings
-     * @allow (create) Authenticated user 'user123' can create group settings for their own user ID.
-     * @allow (get) Authenticated user 'user123' can get their own group settings.
-     * @allow (update) Authenticated user 'user123' can update their own group settings.
-     * @allow (delete) Authenticated user 'user123' can delete their own group settings.
-     * @deny (create) Authenticated user 'user456' cannot create group settings for user 'user123'.
-     * @deny (get) Unauthenticated user cannot get group settings.
-     * @principle Enforces document ownership for writes; restricts access to a user's own data tree.
-     */
-    match /users/{userId}/groupSettings {
-      allow get: if isOwner(userId);
-      allow list: if false;
-      allow create: if isOwner(userId);
-      allow update: if isExistingOwner(userId);
-      allow delete: if isExistingOwner(userId);
-    }
+    match /users/{userId} {
+       match /members/{memberId} {
+          allow read: if isOwner(userId);
+          allow write: if isOwner(userId);
+       }
 
-    /**
-     * @description Rules for managing member data.
-     * @path /users/{userId}/members/{memberId}
-     * @allow (create) Authenticated user 'user123' can create member data for their own user ID.
-     * @allow (get) Authenticated user 'user123' can get their own member data.
-     * @allow (update) Authenticated user 'user123' can update their own member data.
-     * @allow (delete) Authenticated user 'user123' can delete their own member data.
-     * @deny (create) Authenticated user 'user456' cannot create member data for user 'user123'.
-     * @deny (get) Unauthenticated user cannot get member data.
-     * @principle Enforces document ownership for writes; restricts access to a user's own data tree.
-     */
-    match /users/{userId}/members/{memberId} {
-      allow get: if isOwner(userId);
-      allow list: if isOwner(userId);
-      allow create: if isOwner(userId);
-      allow update: if isExistingOwner(userId);
-      allow delete: if isExistingOwner(userId);
-    }
+       match /transactions/{transactionId} {
+          allow read: if isOwner(userId);
+          allow write: if isOwner(userId);
+       }
 
-    /**
-     * @description Rules for managing transaction data.
-     * @path /users/{userId}/transactions/{transactionId}
-     * @allow (create) Authenticated user 'user123' can create transaction data for their own user ID.
-     * @allow (get) Authenticated user 'user123' can get their own transaction data.
-     * @allow (update) Authenticated user 'user123' can update their own transaction data.
-     * @allow (delete) Authenticated user 'user123' can delete their own transaction data.
-     * @deny (create) Authenticated user 'user456' cannot create transaction data for user 'user123'.
-     * @deny (get) Unauthenticated user cannot get transaction data.
-     * @principle Enforces document ownership for writes; restricts access to a user's own data tree.
-     */
-    match /users/{userId}/transactions/{transactionId} {
-      allow get: if isOwner(userId);
-      allow list: if isOwner(userId);
-      allow create: if isOwner(userId);
-      allow update: if isExistingOwner(userId);
-      allow delete: if isExistingOwner(userId);
+       match /groupSettings/{settings} {
+          allow get: if isOwner(userId);
+          allow create: if isOwner(userId);
+          allow update: if isOwner(userId);
+          allow delete: if isOwner(userId);
+          allow list: if false;
+       }
     }
   }
 }
