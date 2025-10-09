@@ -11,7 +11,7 @@ import { format } from 'date-fns';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
 import type { Member, Transaction, GroupSettings } from '@/types';
-import { useUser, useFirestore, useMemoFirebase, updateDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
+import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 
 
 import { Button } from '@/components/ui/button';
@@ -93,6 +93,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         const memberDocRef = doc(firestore, `users/${user.uid}/members`, values.memberId);
         const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings/settings`);
 
+        const batch = writeBatch(firestore);
         const [memberSnapshot, settingsSnapshot] = await Promise.all([
             getDoc(memberDocRef),
             getDoc(settingsDocRef)
@@ -146,7 +147,6 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
             totalFund: newTotalFund,
         };
 
-        const batch = writeBatch(firestore);
         batch.set(newTxRef, newTransaction);
         batch.update(memberDocRef, memberUpdateData);
         batch.update(settingsDocRef, settingsUpdateData);
