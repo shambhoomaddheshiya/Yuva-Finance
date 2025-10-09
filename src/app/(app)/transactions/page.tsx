@@ -10,7 +10,7 @@ import { format } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
-import type { Member, Transaction } from '@/types';
+import type { Member, Transaction, GroupSettings } from '@/types';
 import { useUser, useFirestore, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 
 
@@ -94,7 +94,13 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
       const memberSnapshot = await getDoc(memberDocRef);
       if (!memberSnapshot.exists()) throw new Error('Selected member not found.');
       
+      const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings/settings`);
+      const settingsSnapshot = await getDoc(settingsDocRef);
+      if (!settingsSnapshot.exists()) throw new Error('Group settings not found.');
+
       const memberData = memberSnapshot.data() as Member;
+      const settingsData = settingsSnapshot.data() as GroupSettings;
+
       const newBalance = values.type === 'deposit'
         ? memberData.currentBalance + values.amount
         : memberData.currentBalance - values.amount;
@@ -121,10 +127,19 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         totalDeposited: memberData.totalDeposited + (values.type === 'deposit' ? values.amount : 0),
         totalWithdrawn: memberData.totalWithdrawn + (values.type === 'withdrawal' ? values.amount : 0),
       };
+
+      const newTotalFund = values.type === 'deposit'
+        ? settingsData.totalFund + values.amount
+        : settingsData.totalFund - values.amount;
       
-      // Use non-blocking operations instead of a batch
-      addDocumentNonBlocking(txsRef, newTransaction);
+      const settingsUpdateData: Partial<GroupSettings> = {
+        totalFund: newTotalFund,
+      };
+      
+      addDocumentNonBlocking(newTxRef, newTransaction);
       updateDocumentNonBlocking(memberDocRef, memberUpdateData);
+      updateDocumentNonBlocking(settingsDocRef, settingsUpdateData);
+
 
       toast({
         title: 'Success!',
