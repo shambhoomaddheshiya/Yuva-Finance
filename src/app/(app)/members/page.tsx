@@ -368,15 +368,18 @@ export default function MembersPage() {
             batch.delete(doc.ref);
         });
 
-        // 3. Update totalMembers in groupSettings
+        // 3. Update totalMembers and totalFund in groupSettings
         const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
         const settingsSnap = await getDoc(settingsDocRef);
         if (settingsSnap.exists()) {
             const settingsData = settingsSnap.data() as GroupSettings;
             const newTotalMembers = (settingsData.totalMembers || 0) > 0 ? settingsData.totalMembers - 1 : 0;
-            batch.update(settingsDocRef, { totalMembers: newTotalMembers });
+            const newTotalFund = (settingsData.totalFund || 0) - selectedMember.currentBalance;
+            batch.update(settingsDocRef, { 
+                totalMembers: newTotalMembers,
+                totalFund: newTotalFund < 0 ? 0 : newTotalFund
+            });
         }
-
 
         await batch.commit();
 
