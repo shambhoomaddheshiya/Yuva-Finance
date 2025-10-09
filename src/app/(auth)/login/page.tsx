@@ -84,7 +84,7 @@ export default function LoginPage() {
     },
   });
 
-  async function onEmailSubmit(values: z.infer<typeof formSchema>>) {
+  async function onEmailSubmit(values: z.infer<typeof formSchema>) {
     if (!auth || !firestore) return;
     setIsLoading(true);
     try {
