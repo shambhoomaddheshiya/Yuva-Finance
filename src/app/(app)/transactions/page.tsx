@@ -101,13 +101,19 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
       const memberData = memberSnapshot.data() as Member;
       const settingsData = settingsSnapshot.data() as GroupSettings;
 
-      const newTotalDeposited = memberData.totalDeposited + (values.type === 'deposit' ? values.amount : 0);
-      const newTotalWithdrawn = memberData.totalWithdrawn + (values.type === 'withdrawal' ? values.amount : 0);
-      const newBalance = newTotalDeposited - newTotalWithdrawn;
-
-      if (values.type === 'withdrawal' && newBalance < 0) {
+      let newBalance;
+      if (values.type === 'deposit') {
+        newBalance = memberData.currentBalance + values.amount;
+      } else {
+        newBalance = memberData.currentBalance - values.amount;
+      }
+      
+      if (newBalance < 0) {
         throw new Error('Withdrawal amount exceeds member balance.');
       }
+
+      const newTotalDeposited = values.type === 'deposit' ? memberData.totalDeposited + values.amount : memberData.totalDeposited;
+      const newTotalWithdrawn = values.type === 'withdrawal' ? memberData.totalWithdrawn + values.amount : memberData.totalWithdrawn;
 
       const txsRef = collection(firestore, `users/${user.uid}/transactions`);
       const newTxRef = doc(txsRef);
