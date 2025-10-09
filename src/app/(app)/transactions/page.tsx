@@ -11,7 +11,7 @@ import { format } from 'date-fns';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
 import type { Member, Transaction, GroupSettings } from '@/types';
-import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
+import { useUser, useFirestore, useMemoFirebase, updateDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
 
 
 import { Button } from '@/components/ui/button';
@@ -90,89 +90,92 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
     setIsLoading(true);
     try {
-      const memberDocRef = doc(firestore, `users/${user.uid}/members`, values.memberId);
-      const memberSnapshot = await getDoc(memberDocRef);
-      if (!memberSnapshot.exists()) throw new Error('Selected member not found.');
-      
-      const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
-      const settingsSnapshot = await getDoc(settingsDocRef);
-      if (!settingsSnapshot.exists()) throw new Error('Group settings not found.');
+        const memberDocRef = doc(firestore, `users/${user.uid}/members`, values.memberId);
+        const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings/settings`);
 
-      const memberData = memberSnapshot.data() as Member;
-      const settingsData = settingsSnapshot.data() as GroupSettings;
-      
-      const batch = writeBatch(firestore);
+        const [memberSnapshot, settingsSnapshot] = await Promise.all([
+            getDoc(memberDocRef),
+            getDoc(settingsDocRef)
+        ]);
+        
+        if (!memberSnapshot.exists()) throw new Error('Selected member not found.');
+        if (!settingsSnapshot.exists()) throw new Error('Group settings not found.');
 
-      let newBalance;
-      let newTotalDeposited = memberData.totalDeposited;
-      let newTotalWithdrawn = memberData.totalWithdrawn;
-      
-      if (values.type === 'deposit') {
-        newBalance = memberData.currentBalance + values.amount;
-        newTotalDeposited += values.amount;
-      } else {
-        if (memberData.currentBalance < values.amount) {
-            throw new Error('Withdrawal amount exceeds member balance.');
+        const memberData = memberSnapshot.data() as Member;
+        const settingsData = settingsSnapshot.data() as GroupSettings;
+
+        let newBalance, newTotalDeposited, newTotalWithdrawn;
+
+        if (values.type === 'deposit') {
+            newBalance = memberData.currentBalance + values.amount;
+            newTotalDeposited = memberData.totalDeposited + values.amount;
+            newTotalWithdrawn = memberData.totalWithdrawn;
+        } else {
+            if (memberData.currentBalance < values.amount) {
+                throw new Error('Withdrawal amount exceeds member balance.');
+            }
+            newBalance = memberData.currentBalance - values.amount;
+            newTotalDeposited = memberData.totalDeposited;
+            newTotalWithdrawn = memberData.totalWithdrawn + values.amount;
         }
-        newBalance = memberData.currentBalance - values.amount;
-        newTotalWithdrawn += values.amount;
-      }
 
-      const txsRef = collection(firestore, `users/${user.uid}/transactions`);
-      const newTxRef = doc(txsRef);
+        const txsRef = collection(firestore, `users/${user.uid}/transactions`);
+        const newTxRef = doc(txsRef); 
 
-      const newTransaction: Transaction = {
-        id: newTxRef.id,
-        memberId: values.memberId,
-        type: values.type,
-        amount: values.amount,
-        date: format(values.date, 'yyyy-MM-dd'),
-        description: values.description,
-        balance: newBalance,
-      };
+        const newTransaction: Transaction = {
+            id: newTxRef.id,
+            memberId: values.memberId,
+            type: values.type,
+            amount: values.amount,
+            date: format(values.date, 'yyyy-MM-dd'),
+            description: values.description,
+            balance: newBalance,
+        };
 
-      const memberUpdateData: Partial<Member> = {
-        currentBalance: newBalance,
-        totalDeposited: newTotalDeposited,
-        totalWithdrawn: newTotalWithdrawn,
-      };
+        const memberUpdateData: Partial<Member> = {
+            currentBalance: newBalance,
+            totalDeposited: newTotalDeposited,
+            totalWithdrawn: newTotalWithdrawn,
+        };
 
-      const newTotalFund = values.type === 'deposit'
-        ? settingsData.totalFund + values.amount
-        : settingsData.totalFund - values.amount;
-      
-      const settingsUpdateData: Partial<GroupSettings> = {
-        totalFund: newTotalFund,
-      };
-      
-      batch.set(newTxRef, newTransaction);
-      batch.update(memberDocRef, memberUpdateData);
-      batch.update(settingsDocRef, settingsUpdateData);
-      
-      await batch.commit();
+        const newTotalFund = values.type === 'deposit'
+            ? settingsData.totalFund + values.amount
+            : settingsData.totalFund - values.amount;
+        
+        const settingsUpdateData: Partial<GroupSettings> = {
+            totalFund: newTotalFund,
+        };
 
-      toast({
-        title: 'Success!',
-        description: 'New transaction has been recorded.',
-      });
-      form.reset({
-        memberId: '',
-        amount: 0,
-        description: '',
-        date: new Date(),
-        type: 'deposit',
-      });
-      onOpenChange(false);
+        const batch = writeBatch(firestore);
+        batch.set(newTxRef, newTransaction);
+        batch.update(memberDocRef, memberUpdateData);
+        batch.update(settingsDocRef, settingsUpdateData);
+        
+        await batch.commit();
+
+        toast({
+            title: 'Success!',
+            description: 'New transaction has been recorded.',
+        });
+        form.reset({
+            memberId: '',
+            amount: 0,
+            description: '',
+            date: new Date(),
+            type: 'deposit',
+        });
+        onOpenChange(false);
     } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Uh oh! Something went wrong.',
-        description: error.message || 'There was a problem with your request.',
-      });
+        toast({
+            variant: 'destructive',
+            title: 'Uh oh! Something went wrong.',
+            description: error.message || 'There was a problem with your request.',
+        });
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
-  }
+}
+
 
   return (
     <Form {...form}>
