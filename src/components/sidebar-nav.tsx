@@ -39,9 +39,9 @@ export function SidebarNav() {
           <HandCoins className="h-8 w-8" />
           <div className="flex flex-col">
             <h1 className="font-headline text-xl font-bold tracking-tight">
-              Sahayak
+              Yuva Finance
             </h1>
-            <p className="text-xs text-primary/80 -mt-1">Savings</p>
+            <p className="text-xs text-primary/80 -mt-1">Group</p>
           </div>
         </Link>
       </SidebarHeader>
