@@ -5,12 +5,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Loader2 } from 'lucide-react';
-import { collection, doc, getDoc, setDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useToast } from '@/hooks/use-toast';
 import type { GroupSettings } from '@/types';
-import { useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase } from '@/firebase';
+import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -29,13 +29,11 @@ export default function SettingsPage() {
   const firestore = useFirestore();
 
   const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings/settings`) : null, [user, firestore]);
-  const { data: settings, isLoading: loading, error } = useDoc<GroupSettings>(settingsRef);
+  const { data: settings, isLoading: loading } = useDoc<GroupSettings>(settingsRef);
 
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isFormDirty, setIsFormDirty] = useState(false);
-
-
+  
   const form = useForm<z.infer<typeof settingsSchema>>({
     resolver: zodResolver(settingsSchema),
     defaultValues: {
@@ -44,32 +42,27 @@ export default function SettingsPage() {
       interestRate: 0,
     }
   });
-  
-  useEffect(() => {
-    const subscription = form.watch(() => setIsFormDirty(true));
-    return () => subscription.unsubscribe();
-  }, [form]);
-
 
   useEffect(() => {
-    // Wait until both user loading and settings data loading are complete
+    // This effect runs when the loading states change or when settings/user data becomes available.
+    
+    // Exit if we are still waiting for user authentication or settings data.
     if (isUserLoading || loading) {
       return;
     }
 
-    // After loading, if a user exists, proceed.
-    if (user && firestore) {
+    // After loading, if a user is logged in, proceed.
+    if (user && firestore && settingsRef) {
       if (settings) {
-        // If settings exist, populate the form with existing data.
+        // If settings already exist, populate the form with the existing data.
         form.reset({
           groupName: settings.groupName,
           monthlyContribution: settings.monthlyContribution,
           interestRate: settings.interestRate,
         });
-        // Form is clean after reset
-        setTimeout(() => setIsFormDirty(false), 0);
-      } else if (settingsRef) {
-        // If settings do NOT exist for this user, create them.
+      } else {
+        // If settings DO NOT exist for this user, create them now.
+        // This is a critical fallback to ensure the settings document always exists for a logged-in user.
         const createDefaultSettings = async () => {
           const newSettings: GroupSettings = {
             groupName: 'My Savings Group',
@@ -82,9 +75,7 @@ export default function SettingsPage() {
           
           try {
             await setDoc(settingsRef, newSettings);
-            form.reset(newSettings); // Populate form with the new settings
-             // Form is clean after reset
-            setTimeout(() => setIsFormDirty(false), 0);
+            form.reset(newSettings); // Populate form with the newly created settings
             toast({
               title: 'Settings Initialized',
               description: 'Default group settings have been created for you.',
@@ -101,7 +92,7 @@ export default function SettingsPage() {
         createDefaultSettings();
       }
     }
-    // If no user, do nothing. The layout should handle redirection.
+    // If there's no user, we do nothing. The auth layout will handle redirection.
   }, [user, isUserLoading, settings, loading, firestore, form, settingsRef, toast]);
 
 
@@ -115,14 +106,12 @@ export default function SettingsPage() {
         interestRate: values.interestRate,
       };
       
-      // Use setDoc with merge:true which is equivalent to update but creates if not exists
       await setDoc(settingsRef, updatedSettings, { merge: true });
 
       toast({
         title: 'Settings Saved!',
         description: 'Your group settings have been updated.',
       });
-      setIsFormDirty(false);
     } catch (error: any) {
       toast({
         variant: 'destructive',
@@ -163,7 +152,7 @@ export default function SettingsPage() {
               <CardDescription>Manage your group's core settings here.</CardDescription>
             </CardHeader>
             <CardContent>
-              {loading || isUserLoading || !isFormDirty ? <FormSkeleton /> : (
+              {loading || isUserLoading ? <FormSkeleton /> : (
                 <div className="space-y-4">
                   <FormField
                     control={form.control}
