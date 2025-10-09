@@ -5,13 +5,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp } from 'lucide-react';
-import { collection, doc, getDoc, query } from 'firebase/firestore';
+import { collection, doc, getDoc, query, writeBatch } from 'firebase/firestore';
 import { format } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
 import type { Member, Transaction, GroupSettings } from '@/types';
-import { useUser, useFirestore, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
+import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 
 
 import { Button } from '@/components/ui/button';
@@ -100,11 +100,13 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
       const memberData = memberSnapshot.data() as Member;
       const settingsData = settingsSnapshot.data() as GroupSettings;
+      
+      const batch = writeBatch(firestore);
 
       let newBalance;
       let newTotalDeposited = memberData.totalDeposited;
       let newTotalWithdrawn = memberData.totalWithdrawn;
-
+      
       if (values.type === 'deposit') {
         newBalance = memberData.currentBalance + values.amount;
         newTotalDeposited += values.amount;
@@ -143,10 +145,11 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         totalFund: newTotalFund,
       };
       
-      addDocumentNonBlocking(newTxRef, newTransaction);
-      updateDocumentNonBlocking(memberDocRef, memberUpdateData);
-      updateDocumentNonBlocking(settingsDocRef, settingsUpdateData);
-
+      batch.set(newTxRef, newTransaction);
+      batch.update(memberDocRef, memberUpdateData);
+      batch.update(settingsDocRef, settingsUpdateData);
+      
+      await batch.commit();
 
       toast({
         title: 'Success!',
