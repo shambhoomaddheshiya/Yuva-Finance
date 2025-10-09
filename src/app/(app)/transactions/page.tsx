@@ -5,13 +5,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp } from 'lucide-react';
-import { collection, doc, getDoc, query, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, query } from 'firebase/firestore';
 import { format } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
 import type { Member, Transaction } from '@/types';
-import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
+import { useUser, useFirestore, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 
 
 import { Button } from '@/components/ui/button';
@@ -122,18 +122,9 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         totalWithdrawn: memberData.totalWithdrawn + (values.type === 'withdrawal' ? values.amount : 0),
       };
       
-      const batch = writeBatch(firestore);
-      batch.set(newTxRef, newTransaction);
-      batch.update(memberDocRef, memberUpdateData);
-      
-      batch.commit().catch(error => {
-        toast({
-            variant: "destructive",
-            title: "Uh oh! Something went wrong.",
-            description: error.message || "There was a problem with your request.",
-        });
-      });
-
+      // Use non-blocking operations instead of a batch
+      addDocumentNonBlocking(txsRef, newTransaction);
+      updateDocumentNonBlocking(memberDocRef, memberUpdateData);
 
       toast({
         title: 'Success!',
