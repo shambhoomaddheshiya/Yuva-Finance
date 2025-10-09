@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Loader2 } from 'lucide-react';
-import { collection, query, doc, getDoc, setDoc, getDocs } from 'firebase/firestore';
+import { collection, query, doc, getDoc, setDoc, getDocs, writeBatch } from 'firebase/firestore';
 
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useToast } from '@/hooks/use-toast';
@@ -39,40 +39,51 @@ export default function SettingsPage() {
   });
 
   useEffect(() => {
+    // Only proceed if loading is finished, and we have a user and firestore instance.
+    if (loading || !user || !firestore) {
+      return;
+    }
+
     if (settings) {
+      // If settings exist, populate the form.
       form.reset({
         groupName: settings.groupName,
         monthlyContribution: settings.monthlyContribution,
         interestRate: settings.interestRate,
       });
-    } else if (!loading && !settings && user && firestore) {
-      // If loading is finished, there are no settings, and user is available,
-      // it means the document doesn't exist. Let's create it.
+    } else {
+      // If settings do not exist, create them.
       const createDefaultSettings = async () => {
-         if (!user || !firestore) return;
-        const membersRef = collection(firestore, `users/${user.uid}/members`);
-        const membersSnap = await getDocs(membersRef);
-        const memberCount = membersSnap.size;
+        const membersCollection = collection(firestore, `users/${user.uid}/members`);
+        const membersSnapshot = await getDocs(membersCollection);
+        const totalMembers = membersSnapshot.docs.length;
         
-        const defaultSettings: GroupSettings = {
+        let totalFund = 0;
+        membersSnapshot.docs.forEach(doc => {
+            const memberData = doc.data();
+            totalFund += memberData.currentBalance || 0;
+        });
+
+        const newSettings: GroupSettings = {
           groupName: 'My Savings Group',
           monthlyContribution: 1000,
           interestRate: 2,
-          totalMembers: memberCount,
-          totalFund: 0,
+          totalMembers: totalMembers,
+          totalFund: totalFund,
           establishedDate: new Date().toISOString(),
         };
+
         if (settingsRef) {
           try {
-            await setDoc(settingsRef, defaultSettings);
-            form.reset(defaultSettings);
+            await setDoc(settingsRef, newSettings);
+            form.reset(newSettings); // Populate form with new settings
             toast({
               title: 'Settings Initialized',
               description: 'Default group settings have been created for you.',
             });
-          } catch(e) {
+          } catch (e) {
             console.error("Failed to create default settings:", e);
-             toast({
+            toast({
               variant: 'destructive',
               title: 'Failed to create settings',
               description: 'Could not initialize your settings. Please refresh.',
@@ -80,22 +91,27 @@ export default function SettingsPage() {
           }
         }
       };
+      
       createDefaultSettings();
     }
   }, [settings, loading, user, firestore, form, settingsRef, toast]);
+
 
   async function onSubmit(values: z.infer<typeof settingsSchema>) {
     if (!user || !firestore || !settings) return;
     setIsSubmitting(true);
     try {
-      const updatedSettings: GroupSettings = {
-        ...settings, // Carry over fields like totalMembers, totalFund etc.
+      const batch = writeBatch(firestore);
+
+      // 1. Update settings document
+      const updatedSettings: Partial<GroupSettings> = {
         groupName: values.groupName,
         monthlyContribution: values.monthlyContribution,
         interestRate: values.interestRate,
       };
-
-      setDocumentNonBlocking(settingsRef!, updatedSettings, { merge: true });
+      batch.update(settingsRef!, updatedSettings);
+      
+      await batch.commit();
 
       toast({
         title: 'Settings Saved!',
@@ -141,7 +157,7 @@ export default function SettingsPage() {
               <CardDescription>Manage your group's core settings here.</CardDescription>
             </CardHeader>
             <CardContent>
-              {loading ? <FormSkeleton /> : (
+              {loading || !form.formState.isDirty ? <FormSkeleton /> : (
                 <div className="space-y-4">
                   <FormField
                     control={form.control}
