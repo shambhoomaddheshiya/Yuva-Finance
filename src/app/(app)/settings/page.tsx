@@ -27,13 +27,15 @@ const settingsSchema = z.object({
 export default function SettingsPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
-
+  const { toast } = useToast();
+  
   const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings/settings`) : null, [user, firestore]);
   const { data: settings, isLoading: loading } = useDoc<GroupSettings>(settingsRef);
-
-  const { toast } = useToast();
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  const isInitializing = loading || isUserLoading;
+
   const form = useForm<z.infer<typeof settingsSchema>>({
     resolver: zodResolver(settingsSchema),
     defaultValues: {
@@ -44,26 +46,27 @@ export default function SettingsPage() {
   });
 
   useEffect(() => {
-    // This effect runs when the loading states change or when settings/user data becomes available.
+    // This effect handles two scenarios after initial loading is complete:
+    // 1. Populating the form if settings exist.
+    // 2. Creating default settings if they are missing for a logged-in user.
     
-    // Exit if we are still waiting for user authentication or settings data.
-    if (isUserLoading || loading) {
+    // Wait until both user auth and data fetching are complete.
+    if (isInitializing) {
       return;
     }
 
-    // After loading, if a user is logged in, proceed.
-    if (user && firestore && settingsRef) {
+    if (user && firestore) {
       if (settings) {
-        // If settings already exist, populate the form with the existing data.
+        // Scenario 1: Settings exist, so populate the form.
         form.reset({
           groupName: settings.groupName,
           monthlyContribution: settings.monthlyContribution,
           interestRate: settings.interestRate,
         });
-      } else {
-        // If settings DO NOT exist for this user, create them now.
-        // This is a critical fallback to ensure the settings document always exists for a logged-in user.
+      } else if (settingsRef) {
+        // Scenario 2: User is logged in but has no settings document. Create it.
         const createDefaultSettings = async () => {
+          console.log(`Creating default settings for user ${user.uid}...`);
           const newSettings: GroupSettings = {
             groupName: 'My Savings Group',
             monthlyContribution: 1000,
@@ -75,31 +78,33 @@ export default function SettingsPage() {
           
           try {
             await setDoc(settingsRef, newSettings);
-            form.reset(newSettings); // Populate form with the newly created settings
+            form.reset(newSettings); // Populate form with the newly created settings.
             toast({
               title: 'Settings Initialized',
               description: 'Default group settings have been created for you.',
             });
-          } catch (e) {
+          } catch (e: any) {
             console.error("Failed to create default settings:", e);
             toast({
               variant: 'destructive',
-              title: 'Failed to create settings',
-              description: 'Could not initialize your settings. Please refresh.',
+              title: 'Error Initializing Settings',
+              description: e.message || 'Could not initialize your settings. Please refresh the page.',
             });
           }
         };
+        
         createDefaultSettings();
       }
     }
-    // If there's no user, we do nothing. The auth layout will handle redirection.
-  }, [user, isUserLoading, settings, loading, firestore, form, settingsRef, toast]);
+  }, [isInitializing, user, firestore, settings, settingsRef, form, toast]);
 
 
   async function onSubmit(values: z.infer<typeof settingsSchema>) {
     if (!user || !firestore || !settingsRef) return;
     setIsSubmitting(true);
     try {
+      // Use the existing settings as a base to avoid overwriting fields
+      // like totalFund, totalMembers, and establishedDate.
       const updatedSettings: Partial<GroupSettings> = {
         groupName: values.groupName,
         monthlyContribution: values.monthlyContribution,
@@ -152,7 +157,7 @@ export default function SettingsPage() {
               <CardDescription>Manage your group's core settings here.</CardDescription>
             </CardHeader>
             <CardContent>
-              {loading || isUserLoading ? <FormSkeleton /> : (
+              {isInitializing ? <FormSkeleton /> : (
                 <div className="space-y-4">
                   <FormField
                     control={form.control}
@@ -197,7 +202,7 @@ export default function SettingsPage() {
               )}
             </CardContent>
             <CardFooter className="border-t px-6 py-4">
-              <Button type="submit" disabled={isSubmitting || loading || isUserLoading}>
+              <Button type="submit" disabled={isSubmitting || isInitializing}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save Settings
               </Button>
