@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Loader2 } from 'lucide-react';
-import { collection, query, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, doc, getDoc, setDoc, getDocs } from 'firebase/firestore';
 
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useToast } from '@/hooks/use-toast';
@@ -49,11 +49,16 @@ export default function SettingsPage() {
       // If loading is finished, there are no settings, and user is available,
       // it means the document doesn't exist. Let's create it.
       const createDefaultSettings = async () => {
+         if (!user) return; // Add guard to ensure user is available
+        const membersRef = collection(firestore, `users/${user.uid}/members`);
+        const membersSnap = await getDocs(membersRef);
+        const memberCount = membersSnap.size;
+        
         const defaultSettings: GroupSettings = {
           groupName: 'My Savings Group',
           monthlyContribution: 1000,
           interestRate: 2,
-          totalMembers: 0,
+          totalMembers: memberCount,
           totalFund: 0,
           establishedDate: new Date().toISOString(),
         };
