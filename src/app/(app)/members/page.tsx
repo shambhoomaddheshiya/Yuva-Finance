@@ -4,9 +4,9 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp } from 'lucide-react';
+import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
-import { collection, doc, query, where, writeBatch, getDocs } from 'firebase/firestore';
+import { collection, doc, query, where, writeBatch, getDocs, deleteDoc } from 'firebase/firestore';
 import { useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -24,10 +24,21 @@ import {
   DialogFooter
 } from '@/components/ui/dialog';
 import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import {
   Table,
@@ -319,6 +330,7 @@ function PassbookView({ member }: { member: Member }) {
 
 export default function MembersPage() {
   const { user } = useUser();
+  const { toast } = useToast();
   const firestore = useFirestore();
   const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
   const { data: memberList, isLoading: loading } = useCollection<Member>(membersRef);
@@ -326,7 +338,9 @@ export default function MembersPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isPassbookOpen, setIsPassbookOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | undefined>(undefined);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleEdit = (member: Member) => {
     setSelectedMember(member);
@@ -337,6 +351,49 @@ export default function MembersPage() {
     setSelectedMember(member);
     setIsPassbookOpen(true);
   }
+
+  const handleDelete = (member: Member) => {
+    setSelectedMember(member);
+    setIsDeleteDialogOpen(true);
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!selectedMember || !user || !firestore) return;
+    setIsDeleting(true);
+    try {
+        const memberId = selectedMember.id;
+        const batch = writeBatch(firestore);
+
+        // 1. Delete member document
+        const memberDocRef = doc(firestore, `users/${user.uid}/members`, memberId);
+        batch.delete(memberDocRef);
+
+        // 2. Find and delete all transactions for that member
+        const transactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('memberId', '==', memberId));
+        const transactionsSnapshot = await getDocs(transactionsQuery);
+        transactionsSnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
+        await batch.commit();
+
+        toast({
+            title: 'Success!',
+            description: `Member ${selectedMember.name} and all their transactions have been deleted.`,
+        });
+
+    } catch (error: any) {
+        toast({
+            variant: 'destructive',
+            title: 'Uh oh! Something went wrong.',
+            description: error.message || 'There was a problem deleting the member.',
+        });
+    } finally {
+        setIsDeleting(false);
+        setIsDeleteDialogOpen(false);
+        setSelectedMember(undefined);
+    }
+  };
   
   return (
     <div className="space-y-6">
@@ -422,6 +479,11 @@ export default function MembersPage() {
                             <BookUser className="mr-2 h-4 w-4" />
                             <span>Passbook</span>
                           </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => handleDelete(member)} className="text-destructive focus:bg-destructive/10 focus:text-destructive">
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            <span>Delete</span>
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -462,6 +524,24 @@ export default function MembersPage() {
             {selectedMember && <PassbookView member={selectedMember} />}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete the member <span className="font-bold">{selectedMember?.name}</span> and all of their associated transactions.
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive hover:bg-destructive/90" disabled={isDeleting}>
+                    {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Yes, delete member
+                </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );
