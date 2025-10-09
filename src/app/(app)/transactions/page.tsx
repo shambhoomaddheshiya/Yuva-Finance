@@ -77,7 +77,12 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
   const form = useForm<z.infer<typeof transactionSchema>>({
     resolver: zodResolver(transactionSchema),
-    defaultValues: { date: new Date() },
+    defaultValues: {
+      memberId: '',
+      amount: 0,
+      description: '',
+      date: new Date(),
+    },
   });
 
   async function onSubmit(values: z.infer<typeof transactionSchema>) {
@@ -126,7 +131,12 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         title: 'Success!',
         description: 'New transaction has been recorded.',
       });
-      form.reset({ date: new Date() });
+      form.reset({
+        memberId: '',
+        amount: 0,
+        description: '',
+        date: new Date(),
+      });
       onOpenChange(false);
     } catch (error: any) {
       toast({
