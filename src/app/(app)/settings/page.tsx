@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Loader2 } from 'lucide-react';
-import { collection, query, doc, getDoc, setDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, setDoc, getDocs, writeBatch } from 'firebase/firestore';
 
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useToast } from '@/hooks/use-toast';
@@ -25,7 +25,7 @@ const settingsSchema = z.object({
 });
 
 export default function SettingsPage() {
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
 
   const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings/settings`) : null, [user, firestore]);
@@ -33,50 +33,58 @@ export default function SettingsPage() {
 
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFormDirty, setIsFormDirty] = useState(false);
+
 
   const form = useForm<z.infer<typeof settingsSchema>>({
     resolver: zodResolver(settingsSchema),
+    defaultValues: {
+      groupName: '',
+      monthlyContribution: 0,
+      interestRate: 0,
+    }
   });
+  
+  useEffect(() => {
+    const subscription = form.watch(() => setIsFormDirty(true));
+    return () => subscription.unsubscribe();
+  }, [form]);
+
 
   useEffect(() => {
-    // Only proceed if loading is finished, and we have a user and firestore instance.
-    if (loading || !user || !firestore) {
+    // Wait until both user loading and settings data loading are complete
+    if (isUserLoading || loading) {
       return;
     }
 
-    if (settings) {
-      // If settings exist, populate the form.
-      form.reset({
-        groupName: settings.groupName,
-        monthlyContribution: settings.monthlyContribution,
-        interestRate: settings.interestRate,
-      });
-    } else {
-      // If settings do not exist, create them.
-      const createDefaultSettings = async () => {
-        const membersCollection = collection(firestore, `users/${user.uid}/members`);
-        const membersSnapshot = await getDocs(membersCollection);
-        const totalMembers = membersSnapshot.docs.length;
-        
-        let totalFund = 0;
-        membersSnapshot.docs.forEach(doc => {
-            const memberData = doc.data();
-            totalFund += memberData.currentBalance || 0;
+    // After loading, if a user exists, proceed.
+    if (user && firestore) {
+      if (settings) {
+        // If settings exist, populate the form with existing data.
+        form.reset({
+          groupName: settings.groupName,
+          monthlyContribution: settings.monthlyContribution,
+          interestRate: settings.interestRate,
         });
-
-        const newSettings: GroupSettings = {
-          groupName: 'My Savings Group',
-          monthlyContribution: 1000,
-          interestRate: 2,
-          totalMembers: totalMembers,
-          totalFund: totalFund,
-          establishedDate: new Date().toISOString(),
-        };
-
-        if (settingsRef) {
+        // Form is clean after reset
+        setTimeout(() => setIsFormDirty(false), 0);
+      } else if (settingsRef) {
+        // If settings do NOT exist for this user, create them.
+        const createDefaultSettings = async () => {
+          const newSettings: GroupSettings = {
+            groupName: 'My Savings Group',
+            monthlyContribution: 1000,
+            interestRate: 2,
+            totalMembers: 0,
+            totalFund: 0,
+            establishedDate: new Date().toISOString(),
+          };
+          
           try {
             await setDoc(settingsRef, newSettings);
-            form.reset(newSettings); // Populate form with new settings
+            form.reset(newSettings); // Populate form with the new settings
+             // Form is clean after reset
+            setTimeout(() => setIsFormDirty(false), 0);
             toast({
               title: 'Settings Initialized',
               description: 'Default group settings have been created for you.',
@@ -89,34 +97,32 @@ export default function SettingsPage() {
               description: 'Could not initialize your settings. Please refresh.',
             });
           }
-        }
-      };
-      
-      createDefaultSettings();
+        };
+        createDefaultSettings();
+      }
     }
-  }, [settings, loading, user, firestore, form, settingsRef, toast]);
+    // If no user, do nothing. The layout should handle redirection.
+  }, [user, isUserLoading, settings, loading, firestore, form, settingsRef, toast]);
 
 
   async function onSubmit(values: z.infer<typeof settingsSchema>) {
-    if (!user || !firestore || !settings) return;
+    if (!user || !firestore || !settingsRef) return;
     setIsSubmitting(true);
     try {
-      const batch = writeBatch(firestore);
-
-      // 1. Update settings document
       const updatedSettings: Partial<GroupSettings> = {
         groupName: values.groupName,
         monthlyContribution: values.monthlyContribution,
         interestRate: values.interestRate,
       };
-      batch.update(settingsRef!, updatedSettings);
       
-      await batch.commit();
+      // Use setDoc with merge:true which is equivalent to update but creates if not exists
+      await setDoc(settingsRef, updatedSettings, { merge: true });
 
       toast({
         title: 'Settings Saved!',
         description: 'Your group settings have been updated.',
       });
+      setIsFormDirty(false);
     } catch (error: any) {
       toast({
         variant: 'destructive',
@@ -157,7 +163,7 @@ export default function SettingsPage() {
               <CardDescription>Manage your group's core settings here.</CardDescription>
             </CardHeader>
             <CardContent>
-              {loading || !form.formState.isDirty ? <FormSkeleton /> : (
+              {loading || isUserLoading || !isFormDirty ? <FormSkeleton /> : (
                 <div className="space-y-4">
                   <FormField
                     control={form.control}
@@ -202,7 +208,7 @@ export default function SettingsPage() {
               )}
             </CardContent>
             <CardFooter className="border-t px-6 py-4">
-              <Button type="submit" disabled={isSubmitting || loading}>
+              <Button type="submit" disabled={isSubmitting || loading || isUserLoading}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save Settings
               </Button>
