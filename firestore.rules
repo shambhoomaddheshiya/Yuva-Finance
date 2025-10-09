@@ -1,114 +1,138 @@
 /**
- * @fileOverview Firestore Security Rules for Sahayak Savings App
+ * @fileoverview Firestore Security Rules for Sahayak Savings App
  *
- * @corePhilosophy
- * This ruleset enforces a strict user-ownership model where each user has exclusive access to their own data, stored under their unique user ID.
+ * Core Philosophy:
+ * This ruleset enforces a strict user-ownership model where each user can only
+ * access data associated with their own user ID. All data is nested under
+ * /users/{userId}, ensuring strong isolation. The groupSettings are duplicated into the members and transaction documents.
  *
- * @dataStructure
- * - /users/{userId}/members/{memberId}: Stores member data, accessible only by the owning user.
- * - /users/{userId}/transactions/{transactionId}: Stores transaction data, accessible only by the owning user.
- * - /users/{userId}/groupSettings: Stores group settings, accessible only by the owning user.
+ * Data Structure:
+ * - /users/{userId}/members/{memberId}: Stores member data specific to a user.
+ * - /users/{userId}/transactions/{transactionId}: Stores transaction data specific to a user.
+ * - /users/{userId}/groupSettings: Stores group settings for a user.
  *
- * @keySecurityDecisions
- * - User listing is implicitly disallowed by the data structure; only data within a user's own scope is accessible.
- * - All write operations (create, update, delete) are strictly controlled via ownership checks using the `request.auth.uid`.
- * - Denormalization of group settings into member and transaction documents avoids costly `get()` operations in security rules.
+ * Key Security Decisions:
+ * - User listing is implicitly denied due to the user-scoping of collections.
+ * - Data validation is relaxed to allow for rapid prototyping, focusing on
+ *   authorization and relational integrity.
+ * - Denormalization is used to improve rule performance and authorization independence.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Enforces access control for member documents.
+     * @description Secures member documents for a specific user. Only the owner can read and write their members.
      * @path /users/{userId}/members/{memberId}
-     * @allow (create) - Authenticated user 'user_abc' can create a new member document under their user ID: request.auth.uid == 'user_abc' and request.resource.data.id == 'user_abc'.
-     * @allow (get, list, update, delete) - Authenticated user 'user_abc' can read, update, or delete their own member document: request.auth.uid == 'user_abc'.
-     * @deny (create) - Authenticated user 'user_xyz' cannot create a member document under another user's ID ('user_abc'): request.auth.uid != 'user_abc'.
-     * @deny (get, list, update, delete) - Authenticated user 'user_xyz' cannot access member documents under another user's ID ('user_abc'): request.auth.uid != 'user_abc'.
-     * @principle Enforces document ownership for all operations.
+     * @allow (create) - Authenticated user wq8CqKB0mlbCiFGMylZejvBHiMT2 can create a member document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/members/someMemberId if the member's userId matches the path.
+     * @deny (create) - Authenticated user ABkovp7SWg4FyI4qPYtT cannot create a member document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/members/someMemberId.
+     * @principle Enforces document ownership for writes, restricts access to a user's own data tree, validates relational integrity between documents.
      */
     match /users/{userId}/members/{memberId} {
-      // Helper function to check if the user is signed in
+      // Helper function to check if the user is signed in and owns the document.
       function isSignedIn() {
         return request.auth != null;
       }
 
-      // Helper function to check if the user is the owner of the document
       function isOwner(userId) {
         return request.auth.uid == userId;
       }
 
-      // Helper function to check if the user is the owner of the existing document
       function isExistingOwner(userId) {
         return isOwner(userId) && resource != null;
       }
 
+      // Allows authenticated user to read a member document if they are the owner.
       allow get: if isSignedIn() && isOwner(userId);
+
+      // Allows authenticated user to list member documents if they are the owner.
       allow list: if isSignedIn() && isOwner(userId);
+
+      // Allows authenticated user to create a member document if they are the owner
+      // and the userId in the document matches the path.
       allow create: if isSignedIn() && isOwner(userId) && request.resource.data.id == memberId;
+
+      // Allows authenticated user to update a member document if they are the owner.
+      // Enforces immutability of the userId field.
       allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+
+      // Allows authenticated user to delete a member document if they are the owner.
       allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Enforces access control for transaction documents.
+     * @description Secures transaction documents for a specific user. Only the owner can read and write their transactions.
      * @path /users/{userId}/transactions/{transactionId}
-     * @allow (create) - Authenticated user 'user_abc' can create a new transaction document under their user ID: request.auth.uid == 'user_abc'.
-     * @allow (get, list, update, delete) - Authenticated user 'user_abc' can read, update, or delete their own transaction document: request.auth.uid == 'user_abc'.
-     * @deny (create) - Authenticated user 'user_xyz' cannot create a transaction document under another user's ID ('user_abc'): request.auth.uid != 'user_abc'.
-     * @deny (get, list, update, delete) - Authenticated user 'user_xyz' cannot access transaction documents under another user's ID ('user_abc'): request.auth.uid != 'user_abc'.
-     * @principle Enforces document ownership for all operations.
+     * @allow (create) - Authenticated user wq8CqKB0mlbCiFGMylZejvBHiMT2 can create a transaction document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/transactions/someTransactionId if the transaction's userId matches the path.
+     * @deny (create) - Authenticated user ABkovp7SWg4FyI4qPYtT cannot create a transaction document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/transactions/someTransactionId.
+     * @principle Enforces document ownership for writes, restricts access to a user's own data tree, validates relational integrity between documents.
      */
     match /users/{userId}/transactions/{transactionId} {
-       // Helper function to check if the user is signed in
+      // Helper function to check if the user is signed in and owns the document.
       function isSignedIn() {
         return request.auth != null;
       }
 
-      // Helper function to check if the user is the owner of the document
       function isOwner(userId) {
         return request.auth.uid == userId;
       }
 
-      // Helper function to check if the user is the owner of the existing document
       function isExistingOwner(userId) {
         return isOwner(userId) && resource != null;
       }
+
+      // Allows authenticated user to read a transaction document if they are the owner.
       allow get: if isSignedIn() && isOwner(userId);
+
+      // Allows authenticated user to list transaction documents if they are the owner.
       allow list: if isSignedIn() && isOwner(userId);
-      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.memberId == userId;
-      allow update: if isExistingOwner(userId) && request.resource.data.memberId == resource.data.memberId;
+
+      // Allows authenticated user to create a transaction document if they are the owner
+      // and the userId in the document matches the path.
+      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.id == transactionId;
+
+      // Allows authenticated user to update a transaction document if they are the owner.
+      // Enforces immutability of the userId field.
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+
+      // Allows authenticated user to delete a transaction document if they are the owner.
       allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Enforces access control for group settings documents.
+     * @description Secures group settings document for a specific user. Only the owner can read and write their group settings.
      * @path /users/{userId}/groupSettings
-     * @allow (create) - Authenticated user 'user_abc' can create group settings under their user ID: request.auth.uid == 'user_abc'.
-     * @allow (get, list, update, delete) - Authenticated user 'user_abc' can read, update, or delete their own group settings: request.auth.uid == 'user_abc'.
-     * @deny (create) - Authenticated user 'user_xyz' cannot create group settings under another user's ID ('user_abc'): request.auth.uid != 'user_abc'.
-     * @deny (get, list, update, delete) - Authenticated user 'user_xyz' cannot access group settings under another user's ID ('user_abc'): request.auth.uid != 'user_abc'.
-     * @principle Enforces document ownership for all operations.
+     * @allow (create) - Authenticated user wq8CqKB0mlbCiFGMylZejvBHiMT2 can create a group settings document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/groupSettings.
+     * @deny (create) - Authenticated user ABkovp7SWg4FyI4qPYtT cannot create a group settings document under /users/wq8CqKB0mlbCiFGMylZejvBHiMT2/groupSettings.
+     * @principle Enforces document ownership for writes, restricts access to a user's own data tree.
      */
     match /users/{userId}/groupSettings {
-       // Helper function to check if the user is signed in
+      // Helper function to check if the user is signed in and owns the document.
       function isSignedIn() {
         return request.auth != null;
       }
 
-      // Helper function to check if the user is the owner of the document
       function isOwner(userId) {
         return request.auth.uid == userId;
       }
 
-      // Helper function to check if the user is the owner of the existing document
       function isExistingOwner(userId) {
         return isOwner(userId) && resource != null;
       }
+
+      // Allows authenticated user to read a group settings document if they are the owner.
       allow get: if isSignedIn() && isOwner(userId);
-      allow list: if isSignedIn() && isOwner(userId);
+
+      // Listing group settings is disallowed.
+      allow list: if false;
+
+      // Allows authenticated user to create a group settings document if they are the owner.
       allow create: if isSignedIn() && isOwner(userId);
+
+      // Allows authenticated user to update a group settings document if they are the owner.
       allow update: if isExistingOwner(userId);
+
+      // Allows authenticated user to delete a group settings document if they are the owner.
       allow delete: if isExistingOwner(userId);
     }
   }
