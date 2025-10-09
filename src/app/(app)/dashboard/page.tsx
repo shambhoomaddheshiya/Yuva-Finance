@@ -1,5 +1,7 @@
+
 'use client';
 
+import { useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
@@ -8,7 +10,7 @@ import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recha
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useDoc } from '@/firebase/firestore/use-doc';
-import { collection, query, doc } from 'firebase/firestore';
+import { collection, query, doc, setDoc } from 'firebase/firestore';
 
 function StatCard({
   title,
@@ -57,8 +59,23 @@ export default function DashboardPage() {
   
   const loading = settingsLoading || membersLoading || txLoading;
   
-  const totalDeposited = members ? members.reduce((acc, m) => acc + m.totalDeposited, 0) : 0;
-  const totalWithdrawn = members ? members.reduce((acc, m) => acc + m.totalWithdrawn, 0) : 0;
+  // This effect will run when members and settings data are loaded.
+  // It calculates the true total fund from member balances and corrects the settings document if there's a mismatch.
+  useEffect(() => {
+    if (!loading && members && settings && settingsRef) {
+      const calculatedTotalFund = members.reduce((acc, member) => acc + member.currentBalance, 0);
+      
+      // Compare with a small tolerance for floating point issues
+      if (Math.abs(calculatedTotalFund - settings.totalFund) > 0.01) {
+        console.log(`Correcting totalFund. Stored: ${settings.totalFund}, Calculated: ${calculatedTotalFund}`);
+        setDoc(settingsRef, { totalFund: calculatedTotalFund }, { merge: true })
+          .catch(error => console.error("Failed to correct totalFund:", error));
+      }
+    }
+  }, [loading, members, settings, settingsRef]);
+
+  const totalDeposited = transactions ? transactions.filter(t => t.type === 'deposit').reduce((acc, t) => acc + t.amount, 0) : 0;
+  const totalWithdrawn = transactions ? transactions.filter(t => t.type === 'withdrawal').reduce((acc, t) => acc + t.amount, 0) : 0;
   
   const chartData = [
     { name: 'Deposits', total: totalDeposited, fill: 'hsl(var(--primary))' },

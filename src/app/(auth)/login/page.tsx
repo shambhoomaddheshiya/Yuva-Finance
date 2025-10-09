@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -59,7 +60,7 @@ const createDefaultSettings = async (firestore: any, userId: string) => {
         monthlyContribution: 1000,
         interestRate: 2,
         totalMembers: 0,
-        totalFund: 0, // Initialize to 0. It will be updated by transactions.
+        totalFund: 0,
         establishedDate: new Date().toISOString(),
       };
       await setDoc(settingsDocRef, defaultSettings);
