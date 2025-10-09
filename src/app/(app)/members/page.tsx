@@ -7,7 +7,7 @@ import * as z from 'zod';
 import { PlusCircle, Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { collection, doc, query } from 'firebase/firestore';
-import { useUser, useFirestore, addDocumentNonBlocking, useMemoFirebase, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
@@ -50,6 +50,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 const memberSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
@@ -85,19 +86,19 @@ function MemberForm({ onOpenChange, member }: { onOpenChange: (open: boolean) =>
       } else {
         // Add new member
         const membersRef = collection(firestore, `users/${user.uid}/members`);
-        const newMemberId = doc(collection(firestore, '_')).id; // generate a client-side ID
+        const newMemberId = doc(collection(firestore, '_')).id;
         
         const newMember: Member = {
           id: newMemberId,
           ...values,
-          joinDate: format(new Date(), 'yyyy-MM-dd'),
+          joinDate: new Date().toISOString(),
           totalDeposited: 0,
           totalWithdrawn: 0,
           currentBalance: 0,
           interestEarned: 0,
         };
         const newMemberRef = doc(membersRef, newMemberId);
-        addDocumentNonBlocking(collection(firestore, `users/${user.uid}/members`), newMember);
+        setDocumentNonBlocking(newMemberRef, newMember, {});
         
         toast({
           title: 'Success!',
