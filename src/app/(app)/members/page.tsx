@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp } from 'lucide-react';
 import { format } from 'date-fns';
-import { collection, doc, query, where } from 'firebase/firestore';
+import { collection, doc, query, where, writeBatch, getDocs } from 'firebase/firestore';
 import { useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -53,7 +53,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { cn } from '@/lib/utils';
-import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { addDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 const memberSchema = z.object({
   id: z.string().min(1, 'Member ID cannot be empty.'),
@@ -84,18 +84,53 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
     try {
         const membersRef = collection(firestore, `users/${user.uid}/members`);
       if (isEdit && member) {
-        // Update existing member
-        const memberRef = doc(membersRef, member.id);
-        const updatePayload: Partial<Member> = {
-          name: values.name,
-          phone: values.phone,
-          joinDate: values.joinDate.toISOString()
+        if (member.id !== values.id) {
+          // ID has changed, so we need to create a new doc and delete the old one
+          const batch = writeBatch(firestore);
+
+          // 1. Create new member document
+          const newMemberDocRef = doc(firestore, `users/${user.uid}/members`, values.id);
+          const newMemberData: Member = {
+            ...member, // carry over balance etc.
+            id: values.id,
+            name: values.name,
+            phone: values.phone,
+            joinDate: values.joinDate.toISOString(),
+          };
+          batch.set(newMemberDocRef, newMemberData);
+
+          // 2. Find and update transactions with the old memberId
+          const transactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('memberId', '==', member.id));
+          const transactionsSnapshot = await getDocs(transactionsQuery);
+          transactionsSnapshot.forEach(txDoc => {
+            batch.update(txDoc.ref, { memberId: values.id });
+          });
+
+          // 3. Delete the old member document
+          const oldMemberDocRef = doc(firestore, `users/${user.uid}/members`, member.id);
+          batch.delete(oldMemberDocRef);
+
+          await batch.commit();
+
+          toast({
+            title: 'Success!',
+            description: 'Member ID has been changed and transactions updated.',
+          });
+
+        } else {
+            // Update existing member, ID has not changed
+            const memberRef = doc(membersRef, member.id);
+            const updatePayload: Partial<Member> = {
+              name: values.name,
+              phone: values.phone,
+              joinDate: values.joinDate.toISOString()
+            }
+            updateDocumentNonBlocking(memberRef, updatePayload);
+            toast({
+              title: 'Success!',
+              description: 'Member has been updated.',
+            });
         }
-        updateDocumentNonBlocking(memberRef, updatePayload);
-        toast({
-          title: 'Success!',
-          description: 'Member has been updated.',
-        });
       } else {
         // Add new member
         const newMember: Member = {
@@ -138,7 +173,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
                 <FormItem>
                 <FormLabel>Member ID</FormLabel>
                 <FormControl>
-                    <Input placeholder="MEMBER-001" {...field} disabled={isEdit} />
+                    <Input placeholder="MEMBER-001" {...field} />
                 </FormControl>
                 <FormMessage />
                 </FormItem>
