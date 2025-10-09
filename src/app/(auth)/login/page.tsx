@@ -79,7 +79,7 @@ const createDefaultSettings = async (firestore: any, userId: string) => {
       };
       await setDoc(settingsDocRef, defaultSettings);
     } else {
-        console.log(`Settings already exist for user ${userId}.`);
+        console.log(`Settings already exist for user ${userId}. Skipping creation.`);
     }
 }
 
