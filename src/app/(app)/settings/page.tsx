@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Loader2 } from 'lucide-react';
-import { collection, query, doc } from 'firebase/firestore';
+import { collection, query, doc, getDoc, setDoc } from 'firebase/firestore';
 
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useToast } from '@/hooks/use-toast';
@@ -29,7 +29,7 @@ export default function SettingsPage() {
   const firestore = useFirestore();
 
   const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings/settings`) : null, [user, firestore]);
-  const { data: settings, isLoading: loading } = useDoc<GroupSettings>(settingsRef);
+  const { data: settings, isLoading: loading, error } = useDoc<GroupSettings>(settingsRef);
 
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,22 +45,52 @@ export default function SettingsPage() {
         monthlyContribution: settings.monthlyContribution,
         interestRate: settings.interestRate,
       });
+    } else if (!loading && !settings && user && firestore) {
+      // If loading is finished, there are no settings, and user is available,
+      // it means the document doesn't exist. Let's create it.
+      const createDefaultSettings = async () => {
+        const defaultSettings: GroupSettings = {
+          groupName: 'My Savings Group',
+          monthlyContribution: 1000,
+          interestRate: 2,
+          totalMembers: 0,
+          totalFund: 0,
+          establishedDate: new Date().toISOString(),
+        };
+        if (settingsRef) {
+          try {
+            await setDoc(settingsRef, defaultSettings);
+            form.reset(defaultSettings);
+            toast({
+              title: 'Settings Initialized',
+              description: 'Default group settings have been created for you.',
+            });
+          } catch(e) {
+            console.error("Failed to create default settings:", e);
+             toast({
+              variant: 'destructive',
+              title: 'Failed to create settings',
+              description: 'Could not initialize your settings. Please refresh.',
+            });
+          }
+        }
+      };
+      createDefaultSettings();
     }
-  }, [settings, form]);
+  }, [settings, loading, user, firestore, form, settingsRef, toast]);
 
   async function onSubmit(values: z.infer<typeof settingsSchema>) {
-    if (!user || !firestore) return;
+    if (!user || !firestore || !settings) return;
     setIsSubmitting(true);
     try {
-      if (!settings) throw new Error("Original settings not loaded.");
-
       const updatedSettings: GroupSettings = {
-        ...settings,
-        ...values,
+        ...settings, // Carry over fields like totalMembers, totalFund etc.
+        groupName: values.groupName,
+        monthlyContribution: values.monthlyContribution,
+        interestRate: values.interestRate,
       };
 
-      const docRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
-      setDocumentNonBlocking(docRef, updatedSettings, { merge: true });
+      setDocumentNonBlocking(settingsRef!, updatedSettings, { merge: true });
 
       toast({
         title: 'Settings Saved!',
