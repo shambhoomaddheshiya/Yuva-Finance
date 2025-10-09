@@ -6,8 +6,8 @@ import * as z from 'zod';
 import Link from 'next/link';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { GoogleAuthProvider, signInWithPopup, UserCredential } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { GoogleAuthProvider, signInWithPopup, UserCredential, signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -29,7 +29,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { initiateEmailSignIn } from '@/firebase/non-blocking-login';
 import { GroupSettings } from '@/types';
 import { Separator } from '@/components/ui/separator';
 
@@ -49,6 +48,25 @@ function GoogleIcon() {
   );
 }
 
+const createDefaultSettings = async (firestore: any, userId: string) => {
+    const userDocRef = doc(firestore, `users/${userId}/groupSettings`, 'settings');
+    const docSnap = await getDoc(userDocRef);
+
+    if (!docSnap.exists()) {
+      const defaultSettings: GroupSettings = {
+        groupName: 'My Savings Group',
+        monthlyContribution: 1000,
+        interestRate: 2,
+        totalMembers: 1,
+        totalFund: 0,
+        establishedDate: new Date().toISOString(),
+      };
+      // Use await here to ensure settings are created before user is redirected
+      await setDoc(userDocRef, defaultSettings);
+    }
+}
+
+
 export default function LoginPage() {
   const auth = useAuth();
   const firestore = useFirestore();
@@ -65,8 +83,20 @@ export default function LoginPage() {
   });
 
   async function onEmailSubmit(values: z.infer<typeof formSchema>>) {
+    if (!auth || !firestore) return;
     setIsLoading(true);
-    initiateEmailSignIn(auth, values.email, values.password);
+    try {
+        const result: UserCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
+        const user = result.user;
+        await createDefaultSettings(firestore, user.uid);
+    } catch(error: any) {
+         toast({
+            variant: 'destructive',
+            title: 'Sign In Failed',
+            description: error.message || 'An unexpected error occurred during email sign-in.',
+          });
+          setIsLoading(false);
+    }
   }
 
   async function onGoogleSubmit() {
@@ -76,22 +106,7 @@ export default function LoginPage() {
     try {
       const result: UserCredential = await signInWithPopup(auth, provider);
       const user = result.user;
-
-      // Check if user is new, if so, create default settings.
-      const userDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
-      const docSnap = await getDoc(userDocRef);
-
-      if (!docSnap.exists()) {
-        const defaultSettings: GroupSettings = {
-          groupName: 'My Savings Group',
-          monthlyContribution: 1000,
-          interestRate: 2,
-          totalMembers: 1,
-          totalFund: 0,
-          establishedDate: new Date().toISOString(),
-        };
-        await setDocumentNonBlocking(userDocRef, defaultSettings, {});
-      }
+      await createDefaultSettings(firestore, user.uid);
       // Redirect is handled by the layout
     } catch (error: any) {
       toast({
