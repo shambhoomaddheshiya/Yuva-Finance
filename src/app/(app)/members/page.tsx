@@ -4,10 +4,10 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2 } from 'lucide-react';
+import { PlusCircle, Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { collection, doc, query } from 'firebase/firestore';
-import { useUser, useFirestore, addDocumentNonBlocking, useMemoFirebase } from '@/firebase';
+import { useUser, useFirestore, addDocumentNonBlocking, useMemoFirebase, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
@@ -23,6 +23,12 @@ import {
   DialogTrigger,
   DialogFooter
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Table,
   TableBody,
@@ -50,7 +56,7 @@ const memberSchema = z.object({
   phone: z.string().regex(/^\d{10}$/, 'Phone number must be 10 digits.'),
 });
 
-function AddMemberForm({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
+function MemberForm({ onOpenChange, member }: { onOpenChange: (open: boolean) => void, member?: Member }) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useUser();
@@ -58,32 +64,47 @@ function AddMemberForm({ onOpenChange }: { onOpenChange: (open: boolean) => void
 
   const form = useForm<z.infer<typeof memberSchema>>({
     resolver: zodResolver(memberSchema),
-    defaultValues: { name: '', phone: '' },
+    defaultValues: { 
+      name: member?.name || '', 
+      phone: member?.phone || '' 
+    },
   });
 
   async function onSubmit(values: z.infer<typeof memberSchema>) {
     if (!user || !firestore) return;
     setIsLoading(true);
     try {
-      const membersRef = collection(firestore, `users/${user.uid}/members`);
-      const newMemberId = doc(membersRef).id;
+      if (member) {
+        // Update existing member
+        const memberRef = doc(firestore, `users/${user.uid}/members`, member.id);
+        updateDocumentNonBlocking(memberRef, values);
+        toast({
+          title: 'Success!',
+          description: 'Member has been updated.',
+        });
+      } else {
+        // Add new member
+        const membersRef = collection(firestore, `users/${user.uid}/members`);
+        const newMemberId = doc(collection(firestore, '_')).id; // generate a client-side ID
+        
+        const newMember: Member = {
+          id: newMemberId,
+          ...values,
+          joinDate: format(new Date(), 'yyyy-MM-dd'),
+          totalDeposited: 0,
+          totalWithdrawn: 0,
+          currentBalance: 0,
+          interestEarned: 0,
+        };
+        const newMemberRef = doc(membersRef, newMemberId);
+        addDocumentNonBlocking(collection(firestore, `users/${user.uid}/members`), newMember);
+        
+        toast({
+          title: 'Success!',
+          description: 'New member has been added.',
+        });
+      }
       
-      const newMember: Member = {
-        id: `GS${newMemberId.slice(-4).toUpperCase()}`,
-        ...values,
-        joinDate: format(new Date(), 'yyyy-MM-dd'),
-        totalDeposited: 0,
-        totalWithdrawn: 0,
-        currentBalance: 0,
-        interestEarned: 0,
-      };
-      
-      addDocumentNonBlocking(membersRef, newMember);
-
-      toast({
-        title: 'Success!',
-        description: 'New member has been added.',
-      });
       form.reset();
       onOpenChange(false);
     } catch (error: any) {
@@ -129,7 +150,7 @@ function AddMemberForm({ onOpenChange }: { onOpenChange: (open: boolean) => void
         <DialogFooter>
           <Button type="submit" disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Add Member
+            {member ? 'Save Changes' : 'Add Member'}
           </Button>
         </DialogFooter>
       </form>
@@ -143,13 +164,20 @@ export default function MembersPage() {
   const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
   const { data: memberList, isLoading: loading } = useCollection<Member>(membersRef);
 
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<Member | undefined>(undefined);
 
+  const handleEdit = (member: Member) => {
+    setSelectedMember(member);
+    setIsEditDialogOpen(true);
+  };
+  
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold font-headline">Members</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button>
               <PlusCircle className="mr-2 h-4 w-4" />
@@ -163,7 +191,7 @@ export default function MembersPage() {
                 Enter the details of the new member to add them to the group.
               </DialogDescription>
             </DialogHeader>
-            <AddMemberForm onOpenChange={setIsDialogOpen} />
+            <MemberForm onOpenChange={setIsAddDialogOpen} />
           </DialogContent>
         </Dialog>
       </div>
@@ -181,6 +209,7 @@ export default function MembersPage() {
                 <TableHead>Phone</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -192,6 +221,7 @@ export default function MembersPage() {
                     <TableCell><Skeleton className="h-6 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-6 w-24" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-6 w-20 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
                   </TableRow>
                 ))
               ) : memberList && memberList.length > 0 ? (
@@ -206,15 +236,31 @@ export default function MembersPage() {
                         {member.name}
                       </div>
                     </TableCell>
-                    <TableCell>{member.id}</TableCell>
+                    <TableCell>{member.id.slice(-6).toUpperCase()}</TableCell>
                     <TableCell>{member.phone}</TableCell>
                     <TableCell>{new Date(member.joinDate).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right font-mono">₹{member.currentBalance.toLocaleString('en-IN')}</TableCell>
+                     <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <span className="sr-only">Open menu</span>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEdit(member)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            <span>Edit</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
+                  <TableCell colSpan={6} className="h-24 text-center">
                     No members found.
                   </TableCell>
                 </TableRow>
@@ -223,6 +269,18 @@ export default function MembersPage() {
           </Table>
         </CardContent>
       </Card>
+      
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="font-headline">Edit Member</DialogTitle>
+            <DialogDescription>
+              Update the member's details below.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedMember && <MemberForm onOpenChange={setIsEditDialogOpen} member={selectedMember} />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

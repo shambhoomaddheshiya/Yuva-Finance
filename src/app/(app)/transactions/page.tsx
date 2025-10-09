@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp } from 'lucide-react';
-import { collection, doc, getDoc, query, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, query, writeBatch } from 'firebase/firestore';
 import { format } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -55,7 +55,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
-import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 const transactionSchema = z.object({
   memberId: z.string().nonempty('Please select a member.'),
@@ -82,6 +81,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
       amount: 0,
       description: '',
       date: new Date(),
+      type: 'deposit'
     },
   });
 
@@ -106,7 +106,8 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
       const txsRef = collection(firestore, `users/${user.uid}/transactions`);
       const newTxRef = doc(txsRef);
 
-      const newTransaction: Omit<Transaction, 'id'> & { balance: number } = {
+      const newTransaction: Transaction = {
+        id: newTxRef.id,
         memberId: values.memberId,
         type: values.type,
         amount: values.amount,
@@ -124,7 +125,14 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
       const batch = writeBatch(firestore);
       batch.set(newTxRef, newTransaction);
       batch.update(memberDocRef, memberUpdateData);
-      await batch.commit();
+      
+      batch.commit().catch(error => {
+        toast({
+            variant: "destructive",
+            title: "Uh oh! Something went wrong.",
+            description: error.message || "There was a problem with your request.",
+        });
+      });
 
 
       toast({
@@ -136,6 +144,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         amount: 0,
         description: '',
         date: new Date(),
+        type: 'deposit',
       });
       onOpenChange(false);
     } catch (error: any) {
