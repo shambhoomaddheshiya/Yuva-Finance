@@ -4,14 +4,14 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp } from 'lucide-react';
 import { format } from 'date-fns';
-import { collection, doc, query } from 'firebase/firestore';
+import { collection, doc, query, where } from 'firebase/firestore';
 import { useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
-import type { Member } from '@/types';
+import type { Member, Transaction } from '@/types';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -49,15 +49,20 @@ import {
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { cn } from '@/lib/utils';
 import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 const memberSchema = z.object({
+  id: z.string().min(1, 'Member ID cannot be empty.'),
   name: z.string().min(2, 'Name must be at least 2 characters.'),
   phone: z.string().regex(/^\d{10}$/, 'Phone number must be 10 digits.'),
+  joinDate: z.date({ required_error: 'A join date is required.' }),
 });
 
-function MemberForm({ onOpenChange, member }: { onOpenChange: (open: boolean) => void, member?: Member }) {
+function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (open: boolean) => void, member?: Member, isEdit?: boolean }) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useUser();
@@ -66,8 +71,10 @@ function MemberForm({ onOpenChange, member }: { onOpenChange: (open: boolean) =>
   const form = useForm<z.infer<typeof memberSchema>>({
     resolver: zodResolver(memberSchema),
     defaultValues: { 
+      id: member?.id || '',
       name: member?.name || '', 
-      phone: member?.phone || '' 
+      phone: member?.phone || '',
+      joinDate: member ? new Date(member.joinDate) : new Date(),
     },
   });
 
@@ -75,29 +82,31 @@ function MemberForm({ onOpenChange, member }: { onOpenChange: (open: boolean) =>
     if (!user || !firestore) return;
     setIsLoading(true);
     try {
-      if (member) {
+        const membersRef = collection(firestore, `users/${user.uid}/members`);
+      if (isEdit && member) {
         // Update existing member
-        const memberRef = doc(firestore, `users/${user.uid}/members`, member.id);
-        updateDocumentNonBlocking(memberRef, values);
+        const memberRef = doc(membersRef, member.id);
+        const updatePayload: Partial<Member> = {
+          name: values.name,
+          phone: values.phone,
+          joinDate: values.joinDate.toISOString()
+        }
+        updateDocumentNonBlocking(memberRef, updatePayload);
         toast({
           title: 'Success!',
           description: 'Member has been updated.',
         });
       } else {
         // Add new member
-        const membersRef = collection(firestore, `users/${user.uid}/members`);
-        const newMemberId = doc(collection(firestore, '_')).id;
-        
         const newMember: Member = {
-          id: newMemberId,
           ...values,
-          joinDate: new Date().toISOString(),
+          joinDate: values.joinDate.toISOString(),
           totalDeposited: 0,
           totalWithdrawn: 0,
           currentBalance: 0,
           interestEarned: 0,
         };
-        const newMemberRef = doc(membersRef, newMemberId);
+        const newMemberRef = doc(membersRef, values.id);
         setDocumentNonBlocking(newMemberRef, newMember, {});
         
         toast({
@@ -122,6 +131,19 @@ function MemberForm({ onOpenChange, member }: { onOpenChange: (open: boolean) =>
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <FormField
+            control={form.control}
+            name="id"
+            render={({ field }) => (
+                <FormItem>
+                <FormLabel>Member ID</FormLabel>
+                <FormControl>
+                    <Input placeholder="MEMBER-001" {...field} disabled={isEdit} />
+                </FormControl>
+                <FormMessage />
+                </FormItem>
+            )}
+        />
         <FormField
           control={form.control}
           name="name"
@@ -148,16 +170,117 @@ function MemberForm({ onOpenChange, member }: { onOpenChange: (open: boolean) =>
             </FormItem>
           )}
         />
+         <FormField
+          control={form.control}
+          name="joinDate"
+          render={({ field }) => (
+            <FormItem className="flex flex-col">
+              <FormLabel>Join Date</FormLabel>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <FormControl>
+                    <Button
+                      variant={'outline'}
+                      className={cn(
+                        'w-[240px] pl-3 text-left font-normal',
+                        !field.value && 'text-muted-foreground'
+                      )}
+                    >
+                      {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
+                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                    </Button>
+                  </FormControl>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={field.value}
+                    onSelect={field.onChange}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <DialogFooter>
           <Button type="submit" disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {member ? 'Save Changes' : 'Add Member'}
+            {isEdit ? 'Save Changes' : 'Add Member'}
           </Button>
         </DialogFooter>
       </form>
     </Form>
   );
 }
+
+
+function PassbookView({ member }: { member: Member }) {
+    const { user } = useUser();
+    const firestore = useFirestore();
+    const transactionsRef = useMemoFirebase(
+      () => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`), where('memberId', '==', member.id)) : null,
+      [user, firestore, member.id]
+    );
+    const { data: transactions, isLoading } = useCollection<Transaction>(transactionsRef);
+  
+    const sortedTransactions = useMemo(() => {
+        return transactions ? [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
+    }, [transactions]);
+
+    return (
+        <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2 text-sm">
+                <p><span className="font-semibold">Name:</span> {member.name}</p>
+                <p><span className="font-semibold">ID:</span> {member.id}</p>
+                <p><span className="font-semibold">Joined:</span> {new Date(member.joinDate).toLocaleDateString()}</p>
+                <p><span className="font-semibold">Balance:</span> ₹{member.currentBalance.toLocaleString('en-IN')}</p>
+            </div>
+            <Card>
+                <CardHeader>
+                    <CardTitle className='font-headline text-lg'>Transaction History</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {isLoading ? (
+                         <div className="space-y-2">
+                            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+                         </div>
+                    ) : sortedTransactions.length > 0 ? (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Date</TableHead>
+                                    <TableHead>Type</TableHead>
+                                    <TableHead className="text-right">Amount</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {sortedTransactions.map(tx => (
+                                    <TableRow key={tx.id}>
+                                        <TableCell>{new Date(tx.date).toLocaleDateString()}</TableCell>
+                                        <TableCell className='capitalize'>
+                                            <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${tx.type === 'deposit' ? 'border-transparent bg-green-100 text-green-800' : 'border-transparent bg-red-100 text-red-800'}`}>
+                                                {tx.type === 'deposit' ? <ArrowUp className="mr-1 h-3 w-3" /> : <ArrowDown className="mr-1 h-3 w-3" />}
+                                                {tx.type}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className={`text-right font-mono ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
+                                            {tx.type === 'deposit' ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    ) : (
+                        <p className="text-center text-muted-foreground">No transactions found for this member.</p>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+    )
+}
+
 
 export default function MembersPage() {
   const { user } = useUser();
@@ -167,12 +290,18 @@ export default function MembersPage() {
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isPassbookOpen, setIsPassbookOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | undefined>(undefined);
 
   const handleEdit = (member: Member) => {
     setSelectedMember(member);
     setIsEditDialogOpen(true);
   };
+
+  const handlePassbook = (member: Member) => {
+    setSelectedMember(member);
+    setIsPassbookOpen(true);
+  }
   
   return (
     <div className="space-y-6">
@@ -237,7 +366,7 @@ export default function MembersPage() {
                         {member.name}
                       </div>
                     </TableCell>
-                    <TableCell>{member.id.slice(-6).toUpperCase()}</TableCell>
+                    <TableCell>{member.id}</TableCell>
                     <TableCell>{member.phone}</TableCell>
                     <TableCell>{new Date(member.joinDate).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right font-mono">₹{member.currentBalance.toLocaleString('en-IN')}</TableCell>
@@ -253,6 +382,10 @@ export default function MembersPage() {
                           <DropdownMenuItem onClick={() => handleEdit(member)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             <span>Edit</span>
+                          </DropdownMenuItem>
+                           <DropdownMenuItem onClick={() => handlePassbook(member)}>
+                            <BookUser className="mr-2 h-4 w-4" />
+                            <span>Passbook</span>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -279,9 +412,22 @@ export default function MembersPage() {
               Update the member's details below.
             </DialogDescription>
           </DialogHeader>
-          {selectedMember && <MemberForm onOpenChange={setIsEditDialogOpen} member={selectedMember} />}
+          {selectedMember && <MemberForm onOpenChange={setIsEditDialogOpen} member={selectedMember} isEdit={true} />}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={isPassbookOpen} onOpenChange={setIsPassbookOpen}>
+        <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+                <DialogTitle className='font-headline'>Member Passbook</DialogTitle>
+                 <DialogDescription>
+                    Transaction history for {selectedMember?.name}.
+                </DialogDescription>
+            </DialogHeader>
+            {selectedMember && <PassbookView member={selectedMember} />}
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
