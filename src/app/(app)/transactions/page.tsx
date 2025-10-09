@@ -94,7 +94,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
       const memberSnapshot = await getDoc(memberDocRef);
       if (!memberSnapshot.exists()) throw new Error('Selected member not found.');
       
-      const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings/settings`);
+      const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
       const settingsSnapshot = await getDoc(settingsDocRef);
       if (!settingsSnapshot.exists()) throw new Error('Group settings not found.');
 
@@ -102,18 +102,19 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
       const settingsData = settingsSnapshot.data() as GroupSettings;
 
       let newBalance;
+      let newTotalDeposited = memberData.totalDeposited;
+      let newTotalWithdrawn = memberData.totalWithdrawn;
+
       if (values.type === 'deposit') {
         newBalance = memberData.currentBalance + values.amount;
+        newTotalDeposited += values.amount;
       } else {
+        if (memberData.currentBalance < values.amount) {
+            throw new Error('Withdrawal amount exceeds member balance.');
+        }
         newBalance = memberData.currentBalance - values.amount;
+        newTotalWithdrawn += values.amount;
       }
-      
-      if (newBalance < 0) {
-        throw new Error('Withdrawal amount exceeds member balance.');
-      }
-
-      const newTotalDeposited = values.type === 'deposit' ? memberData.totalDeposited + values.amount : memberData.totalDeposited;
-      const newTotalWithdrawn = values.type === 'withdrawal' ? memberData.totalWithdrawn + values.amount : memberData.totalWithdrawn;
 
       const txsRef = collection(firestore, `users/${user.uid}/transactions`);
       const newTxRef = doc(txsRef);

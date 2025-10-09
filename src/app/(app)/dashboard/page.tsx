@@ -57,8 +57,8 @@ export default function DashboardPage() {
   
   const loading = settingsLoading || membersLoading || txLoading;
   
-  const totalDeposited = transactions ? Object.values(transactions).filter(t => t.type === 'deposit').reduce((acc, t) => acc + t.amount, 0) : 0;
-  const totalWithdrawn = transactions ? Object.values(transactions).filter(t => t.type === 'withdrawal').reduce((acc, t) => acc + t.amount, 0) : 0;
+  const totalDeposited = members ? members.reduce((acc, m) => acc + m.totalDeposited, 0) : 0;
+  const totalWithdrawn = members ? members.reduce((acc, m) => acc + m.totalWithdrawn, 0) : 0;
   
   const chartData = [
     { name: 'Deposits', total: totalDeposited, fill: 'hsl(var(--primary))' },
