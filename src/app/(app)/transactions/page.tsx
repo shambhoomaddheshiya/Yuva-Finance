@@ -101,9 +101,9 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
       const memberData = memberSnapshot.data() as Member;
       const settingsData = settingsSnapshot.data() as GroupSettings;
 
-      const newBalance = values.type === 'deposit'
-        ? memberData.currentBalance + values.amount
-        : memberData.currentBalance - values.amount;
+      const newTotalDeposited = memberData.totalDeposited + (values.type === 'deposit' ? values.amount : 0);
+      const newTotalWithdrawn = memberData.totalWithdrawn + (values.type === 'withdrawal' ? values.amount : 0);
+      const newBalance = newTotalDeposited - newTotalWithdrawn;
 
       if (values.type === 'withdrawal' && newBalance < 0) {
         throw new Error('Withdrawal amount exceeds member balance.');
@@ -124,8 +124,8 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
       const memberUpdateData: Partial<Member> = {
         currentBalance: newBalance,
-        totalDeposited: memberData.totalDeposited + (values.type === 'deposit' ? values.amount : 0),
-        totalWithdrawn: memberData.totalWithdrawn + (values.type === 'withdrawal' ? values.amount : 0),
+        totalDeposited: newTotalDeposited,
+        totalWithdrawn: newTotalWithdrawn,
       };
 
       const newTotalFund = values.type === 'deposit'
