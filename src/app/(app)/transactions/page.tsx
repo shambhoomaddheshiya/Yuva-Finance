@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp } from 'lucide-react';
+import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search } from 'lucide-react';
 import { collection, doc, getDoc, query, writeBatch } from 'firebase/firestore';
 import { format } from 'date-fns';
 
@@ -314,9 +314,30 @@ export default function TransactionsPage() {
   const { data: transactions, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loading = txLoading || membersLoading;
-  const txList = transactions ? transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
+  
+  const filteredTransactions = useMemo(() => {
+    if (!transactions || !members) return [];
+    
+    const sortedTransactions = [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    if (!searchQuery) return sortedTransactions;
+
+    const lowercasedQuery = searchQuery.toLowerCase();
+    
+    return sortedTransactions.filter(tx => {
+      const member = members.find(m => m.id === tx.memberId);
+      const memberName = member ? member.name.toLowerCase() : '';
+      
+      return (
+        memberName.includes(lowercasedQuery) ||
+        tx.description.toLowerCase().includes(lowercasedQuery) ||
+        tx.type.toLowerCase().includes(lowercasedQuery)
+      );
+    });
+  }, [transactions, members, searchQuery]);
 
   return (
     <div className="space-y-6">
@@ -342,7 +363,18 @@ export default function TransactionsPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="font-headline">Transaction History</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="font-headline">Transaction History</CardTitle>
+           <div className="relative mt-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search transactions..."
+              className="pl-9"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
@@ -363,8 +395,8 @@ export default function TransactionsPage() {
                     ))}
                   </TableRow>
                 ))
-              ) : txList.length > 0 ? (
-                txList.map((tx) => (
+              ) : filteredTransactions.length > 0 ? (
+                filteredTransactions.map((tx) => (
                   <TableRow key={tx.id}>
                     <TableCell className="font-medium">{members?.find(m => m.id === tx.memberId)?.name || 'Unknown'}</TableCell>
                     <TableCell>
@@ -383,7 +415,7 @@ export default function TransactionsPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center">
-                    No transactions found.
+                     {searchQuery ? 'No transactions match your search.' : 'No transactions found.'}
                   </TableCell>
                 </TableRow>
               )}
