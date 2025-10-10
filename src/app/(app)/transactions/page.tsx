@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -387,7 +388,7 @@ export default function TransactionsPage() {
               onValueChange={setTypeFilter}
               className="flex items-center space-x-4"
             >
-              <FormLabel>Show:</FormLabel>
+              <Label>Show:</Label>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="all" id="all" />
                 <Label htmlFor="all">All</Label>
