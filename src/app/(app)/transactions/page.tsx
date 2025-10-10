@@ -315,6 +315,7 @@ export default function TransactionsPage() {
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
 
   const loading = txLoading || membersLoading;
   
@@ -323,11 +324,16 @@ export default function TransactionsPage() {
     
     const sortedTransactions = [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    if (!searchQuery) return sortedTransactions;
+    const typeFiltered = sortedTransactions.filter(tx => {
+        if (typeFilter === 'all') return true;
+        return tx.type === typeFilter;
+    });
+
+    if (!searchQuery) return typeFiltered;
 
     const lowercasedQuery = searchQuery.toLowerCase();
     
-    return sortedTransactions.filter(tx => {
+    return typeFiltered.filter(tx => {
       const member = members.find(m => m.id === tx.memberId);
       const memberName = member ? member.name.toLowerCase() : '';
       
@@ -337,7 +343,7 @@ export default function TransactionsPage() {
         tx.type.toLowerCase().includes(lowercasedQuery)
       );
     });
-  }, [transactions, members, searchQuery]);
+  }, [transactions, members, searchQuery, typeFilter]);
 
   return (
     <div className="space-y-6">
@@ -365,14 +371,35 @@ export default function TransactionsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Transaction History</CardTitle>
-           <div className="relative mt-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search transactions..."
-              className="pl-9"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+           <div className="space-y-4 pt-2">
+             <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by member, description..."
+                className="pl-9"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <RadioGroup
+              value={typeFilter}
+              onValueChange={setTypeFilter}
+              className="flex items-center space-x-4"
+            >
+              <FormLabel>Show:</FormLabel>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="all" id="all" />
+                <Label htmlFor="all">All</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="deposit" id="deposit" />
+                <Label htmlFor="deposit">Deposits</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="withdrawal" id="withdrawal" />
+                <Label htmlFor="withdrawal">Withdrawals</Label>
+              </div>
+            </RadioGroup>
           </div>
         </CardHeader>
         <CardContent>
@@ -415,7 +442,7 @@ export default function TransactionsPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center">
-                     {searchQuery ? 'No transactions match your search.' : 'No transactions found.'}
+                     {searchQuery || typeFilter !== 'all' ? 'No transactions match your filters.' : 'No transactions found.'}
                   </TableCell>
                 </TableRow>
               )}
