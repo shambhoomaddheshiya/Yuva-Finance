@@ -5,10 +5,11 @@ import { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, Timestamp, doc } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { Member, Transaction } from '@/types';
+import { useDoc } from '@/firebase/firestore/use-doc';
+import { Member, Transaction, GroupSettings } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -43,7 +44,11 @@ export default function ReportsPage() {
     const [isLoading, setIsLoading] = useState(false);
 
     const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
+    const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings`, 'settings') : null, [user, firestore]);
+
     const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
+    const { data: settings, isLoading: settingsLoading } = useDoc<GroupSettings>(settingsRef);
+
 
     const form = useForm<z.infer<typeof reportSchema>>({
         resolver: zodResolver(reportSchema),
@@ -56,7 +61,7 @@ export default function ReportsPage() {
     const reportType = form.watch('reportType');
 
     const generateReport = async (values: z.infer<typeof reportSchema>) => {
-        if (!user || !firestore || !members) return;
+        if (!user || !firestore || !members || !settings) return;
 
         setIsLoading(true);
 
@@ -96,6 +101,21 @@ export default function ReportsPage() {
                 return;
             }
 
+            // Calculate summary
+            const totalDeposits = transactions.filter(tx => tx.type === 'deposit').reduce((sum, tx) => sum + tx.amount, 0);
+            const totalWithdrawals = transactions.filter(tx => tx.type === 'withdrawal').reduce((sum, tx) => sum + tx.amount, 0);
+            const netChange = totalDeposits - totalWithdrawals;
+            const endingFund = settings.totalFund;
+            const startingFund = endingFund - netChange;
+            
+            const summary = {
+                'Starting Fund': startingFund,
+                'Total Deposits': totalDeposits,
+                'Total Withdrawals': totalWithdrawals,
+                'Net Change': netChange,
+                'Ending Fund (Remaining Balance)': endingFund,
+            };
+
             const dataForExport = transactions.map(tx => ({
                 'Member Name': members.find(m => m.id === tx.memberId)?.name || 'Unknown',
                 'Date': tx.date,
@@ -108,16 +128,33 @@ export default function ReportsPage() {
             if (fileFormat === 'pdf') {
                 const doc = new jsPDF();
                 doc.text(reportTitle, 14, 16);
+
+                // Add summary table
+                autoTable(doc, {
+                    body: Object.entries(summary).map(([key, value]) => [key, `₹${value.toLocaleString('en-IN')}`]),
+                    startY: 22,
+                    theme: 'striped',
+                    styles: { fontSize: 10 },
+                    headStyles: { fillColor: [22, 163, 74] },
+                });
+                
+                // Add main data table
                 autoTable(doc, {
                     head: [['Member Name', 'Date', 'Type', 'Description', 'Amount']],
                     body: dataForExport.map(Object.values),
-                    startY: 20,
+                    startY: (doc as any).lastAutoTable.finalY + 10,
                 });
+
                 doc.save(`report-${reportType}-${year}${month ? '-' + month : ''}.pdf`);
             } else if (fileFormat === 'excel') {
-                const worksheet = XLSX.utils.json_to_sheet(dataForExport);
+                const summarySheetData = Object.entries(summary).map(([key, value]) => ({ 'Metric': key, 'Amount (₹)': value }));
+                const summaryWorksheet = XLSX.utils.json_to_sheet(summarySheetData);
+                const dataWorksheet = XLSX.utils.json_to_sheet(dataForExport);
+                
                 const workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(workbook, worksheet, 'Transactions');
+                XLSX.utils.book_append_sheet(workbook, summaryWorksheet, 'Summary');
+                XLSX.utils.book_append_sheet(workbook, dataWorksheet, 'Transactions');
+                
                 XLSX.writeFile(workbook, `report-${reportType}-${year}${month ? '-' + month : ''}.xlsx`);
             }
              toast({
@@ -245,7 +282,7 @@ export default function ReportsPage() {
                                 )}
                             />
 
-                            <Button type="submit" disabled={isLoading || membersLoading}>
+                            <Button type="submit" disabled={isLoading || membersLoading || settingsLoading}>
                                 {isLoading ? 'Generating...' : 'Generate Report'}
                             </Button>
                         </form>
