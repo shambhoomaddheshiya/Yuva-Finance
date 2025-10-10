@@ -131,7 +131,7 @@ export default function ReportsPage() {
 
                 // Add summary table
                 autoTable(doc, {
-                    body: Object.entries(summary).map(([key, value]) => [key, `₹${value.toLocaleString('en-IN')}`]),
+                    body: Object.entries(summary).map(([key, value]) => [key, String(value.toFixed(2))]),
                     startY: 22,
                     theme: 'striped',
                     styles: { fontSize: 10 },
