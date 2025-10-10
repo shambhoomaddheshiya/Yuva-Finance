@@ -174,7 +174,7 @@ export default function DashboardPage() {
                           <p className="text-sm text-muted-foreground">{tx.description}</p>
                         </div>
                         <div className={`font-medium ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
-                          {tx.type === 'deposit' ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}
+                          Rs.{tx.amount.toLocaleString('en-IN')}
                         </div>
                       </div>
                     ))
