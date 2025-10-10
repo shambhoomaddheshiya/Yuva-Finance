@@ -71,9 +71,20 @@ const memberSchema = z.object({
   id: z.string().min(1, 'Member ID cannot be empty.'),
   name: z.string().min(2, 'Name must be at least 2 characters.'),
   phone: z.string().regex(/^\d{10}$/, 'Phone number must be 10 digits.'),
-  aadhaar: z.string().regex(/^\d{12}$/, 'Aadhaar must be 12 digits.'),
+  aadhaar: z.string().refine(value => /^\d{4}-?\d{4}-?\d{4}$/.test(value) || /^\d{12}$/.test(value), {
+    message: 'Aadhaar must be 12 digits.',
+  }),
   joinDate: z.date({ required_error: 'A join date is required.' }),
 });
+
+function formatAadhaar(value: string) {
+    const numericValue = value.replace(/-/g, '');
+    let formattedValue = '';
+    if (numericValue.length > 0) {
+        formattedValue = numericValue.match(/.{1,4}/g)?.join('-') || '';
+    }
+    return formattedValue.substring(0, 14); // 12 digits + 2 hyphens
+}
 
 function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (open: boolean) => void, member?: Member, isEdit?: boolean }) {
   const { toast } = useToast();
@@ -87,7 +98,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
       id: member?.id || '',
       name: member?.name || '', 
       phone: member?.phone || '',
-      aadhaar: member?.aadhaar || '',
+      aadhaar: member ? formatAadhaar(member.aadhaar) : '',
       joinDate: member ? new Date(member.joinDate) : new Date(),
     },
   });
@@ -98,6 +109,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
     try {
         const batch = writeBatch(firestore);
         const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
+        const aadhaarUnformatted = values.aadhaar.replace(/-/g, '');
         
         if (isEdit && member) {
             // Logic for editing a member
@@ -106,7 +118,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
                 const newMemberDocRef = doc(firestore, `users/${user.uid}/members`, values.id);
                 const newMemberData: Member = {
                     ...member,
-                    id: values.id, name: values.name, phone: values.phone, aadhaar: values.aadhaar, joinDate: values.joinDate.toISOString(),
+                    id: values.id, name: values.name, phone: values.phone, aadhaar: aadhaarUnformatted, joinDate: values.joinDate.toISOString(),
                 };
                 batch.set(newMemberDocRef, newMemberData);
 
@@ -125,7 +137,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
                 // ID is the same, simple update
                 const memberRef = doc(firestore, `users/${user.uid}/members`, member.id);
                 const updatePayload: Partial<Member> = {
-                    name: values.name, phone: values.phone, aadhaar: values.aadhaar, joinDate: values.joinDate.toISOString()
+                    name: values.name, phone: values.phone, aadhaar: aadhaarUnformatted, joinDate: values.joinDate.toISOString()
                 };
                 batch.update(memberRef, updatePayload);
                 toast({ title: 'Success!', description: 'Member has been updated.' });
@@ -133,7 +145,8 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
         } else {
             // Logic for adding a new member
             const newMember: Member = {
-                ...values, joinDate: values.joinDate.toISOString(),
+                id: values.id, name: values.name, phone: values.phone, aadhaar: aadhaarUnformatted,
+                joinDate: values.joinDate.toISOString(),
                 totalDeposited: 0, totalWithdrawn: 0, currentBalance: 0, interestEarned: 0,
             };
             const newMemberRef = doc(firestore, `users/${user.uid}/members`, values.id);
@@ -219,7 +232,14 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
             <FormItem>
               <FormLabel>Aadhaar Number</FormLabel>
               <FormControl>
-                <Input placeholder="123456789012" {...field} />
+                <Input 
+                    placeholder="1234-5678-9012" 
+                    {...field}
+                    onChange={(e) => {
+                        const formatted = formatAadhaar(e.target.value);
+                        field.onChange(formatted);
+                    }}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -289,7 +309,7 @@ function PassbookView({ member }: { member: Member }) {
             <div className="grid grid-cols-2 gap-2 text-sm">
                 <p><span className="font-semibold">Name:</span> {member.name}</p>
                 <p><span className="font-semibold">ID:</span> {member.id}</p>
-                <p><span className="font-semibold">Aadhaar:</span> {member.aadhaar}</p>
+                <p><span className="font-semibold">Aadhaar:</span> {formatAadhaar(member.aadhaar)}</p>
                 <p><span className="font-semibold">Joined:</span> {new Date(member.joinDate).toLocaleDateString()}</p>
                 <p><span className="font-semibold">Balance:</span> ₹{member.currentBalance.toLocaleString('en-IN')}</p>
             </div>
@@ -482,7 +502,7 @@ export default function MembersPage() {
                       </div>
                     </TableCell>
                     <TableCell>{member.id}</TableCell>
-                    <TableCell>{member.aadhaar}</TableCell>
+                    <TableCell>{formatAadhaar(member.aadhaar)}</TableCell>
                     <TableCell>{new Date(member.joinDate).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right font-mono">₹{member.currentBalance.toLocaleString('en-IN')}</TableCell>
                      <TableCell className="text-right">
@@ -569,3 +589,5 @@ export default function MembersPage() {
     </div>
   );
 }
+
+    
