@@ -311,7 +311,7 @@ function PassbookView({ member }: { member: Member }) {
                 <p><span className="font-semibold">ID:</span> {member.id}</p>
                 <p><span className="font-semibold">Aadhaar:</span> {formatAadhaar(member.aadhaar)}</p>
                 <p><span className="font-semibold">Joined:</span> {new Date(member.joinDate).toLocaleDateString()}</p>
-                <p><span className="font-semibold">Balance:</span> ₹{member.currentBalance.toLocaleString('en-IN')}</p>
+                <p><span className="font-semibold">Balance:</span> Rs {member.currentBalance.toLocaleString('en-IN')}</p>
             </div>
             <Card>
                 <CardHeader>
@@ -341,8 +341,8 @@ function PassbookView({ member }: { member: Member }) {
                                                 {tx.type}
                                             </div>
                                         </TableCell>
-                                        <TableCell className={`text-right font-mono ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
-                                            {tx.type === 'deposit' ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}
+                                        <TableCell className={`text-right font-medium ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
+                                            {tx.type === 'deposit' ? '+' : '-'}Rs {tx.amount.toLocaleString('en-IN')}
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -589,6 +589,8 @@ export default function MembersPage() {
     </div>
   );
 }
+
+    
 
     
 
