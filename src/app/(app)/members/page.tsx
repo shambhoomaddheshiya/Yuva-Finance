@@ -306,12 +306,13 @@ function PassbookView({ member }: { member: Member }) {
 
     return (
         <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
                 <p><span className="font-semibold">Name:</span> {member.name}</p>
                 <p><span className="font-semibold">ID:</span> {member.id}</p>
-                <p><span className="font-semibold">Aadhaar:</span> {formatAadhaar(member.aadhaar)}</p>
+                <p><span className="font-semibold">Mob No:</span> {member.phone}</p>
+                <p className="col-span-2"><span className="font-semibold">Aadhaar:</span> {formatAadhaar(member.aadhaar)}</p>
                 <p><span className="font-semibold">Joined:</span> {new Date(member.joinDate).toLocaleDateString()}</p>
-                <p><span className="font-semibold">Balance:</span> Rs {member.currentBalance.toLocaleString('en-IN')}</p>
+                <p className="col-span-3 font-medium"><span className="font-semibold">Balance:</span> Rs {member.currentBalance.toLocaleString('en-IN')}</p>
             </div>
             <Card>
                 <CardHeader>
