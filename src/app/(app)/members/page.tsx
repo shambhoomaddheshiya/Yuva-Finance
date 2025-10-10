@@ -5,7 +5,7 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
+import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc } from 'firebase/firestore';
 import { useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
@@ -372,6 +372,21 @@ export default function MembersPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | undefined>(undefined);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredMembers = useMemo(() => {
+    if (!memberList) return [];
+    if (!searchQuery) return memberList;
+
+    const lowercasedQuery = searchQuery.toLowerCase();
+    return memberList.filter(member => 
+        member.name.toLowerCase().includes(lowercasedQuery) ||
+        member.id.toLowerCase().includes(lowercasedQuery) ||
+        member.phone.includes(searchQuery) ||
+        member.aadhaar.includes(searchQuery.replace(/-/g, ''))
+    );
+  }, [memberList, searchQuery]);
+
 
   const handleEdit = (member: Member) => {
     setSelectedMember(member);
@@ -465,6 +480,15 @@ export default function MembersPage() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Member Roster</CardTitle>
+           <div className="relative mt-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search members..."
+              className="pl-9"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -492,8 +516,8 @@ export default function MembersPage() {
                     <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
                   </TableRow>
                 ))
-              ) : memberList && memberList.length > 0 ? (
-                memberList.map((member, index) => (
+              ) : filteredMembers && filteredMembers.length > 0 ? (
+                filteredMembers.map((member, index) => (
                   <TableRow key={member.id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-3">
@@ -539,7 +563,7 @@ export default function MembersPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={7} className="h-24 text-center">
-                    No members found.
+                    {searchQuery ? 'No members match your search.' : 'No members found.'}
                   </TableCell>
                 </TableRow>
               )}
@@ -593,9 +617,3 @@ export default function MembersPage() {
     </div>
   );
 }
-
-    
-
-    
-
-    
