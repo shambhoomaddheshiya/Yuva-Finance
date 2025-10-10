@@ -19,21 +19,30 @@ import { useToast } from '@/hooks/use-toast';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { format, getYear, getMonth, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
+import { format, getYear, getMonth, startOfMonth, endOfMonth, startOfYear, endOfYear, addDays } from 'date-fns';
+import { CalendarIcon } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
+import { DateRange } from 'react-day-picker';
 
 const reportSchema = z.object({
-  reportType: z.enum(['monthly', 'yearly']),
-  year: z.string().nonempty('Please select a year.'),
+  reportType: z.enum(['monthly', 'yearly', 'custom']),
+  year: z.string().optional(),
   month: z.string().optional(),
+  dateRange: z.object({
+    from: z.date().optional(),
+    to: z.date().optional(),
+  }).optional(),
   format: z.enum(['pdf', 'excel']),
 }).refine(data => {
-    if (data.reportType === 'monthly') {
-        return !!data.month;
-    }
-    return true;
+    if (data.reportType === 'monthly') return !!data.year && !!data.month;
+    if (data.reportType === 'yearly') return !!data.year;
+    if (data.reportType === 'custom') return !!data.dateRange?.from && !!data.dateRange?.to;
+    return false;
 }, {
-    message: 'Month is required for monthly reports',
-    path: ['month'],
+    message: 'Please complete all required fields for the selected report type.',
+    path: ['reportType'], // General message at the type level
 });
 
 
@@ -66,21 +75,33 @@ export default function ReportsPage() {
         setIsLoading(true);
 
         try {
-            const { reportType, year, month, format: fileFormat } = values;
-            const selectedYear = parseInt(year);
+            const { reportType, year, month, dateRange, format: fileFormat } = values;
             let startDate: Date;
             let endDate: Date;
             let reportTitle: string;
 
-            if (reportType === 'monthly' && month) {
+            if (reportType === 'monthly' && month && year) {
+                const selectedYear = parseInt(year);
                 const selectedMonth = parseInt(month);
                 startDate = startOfMonth(new Date(selectedYear, selectedMonth));
                 endDate = endOfMonth(new Date(selectedYear, selectedMonth));
                 reportTitle = `Monthly Report: ${format(startDate, 'MMMM yyyy')}`;
-            } else {
+            } else if (reportType === 'yearly' && year) {
+                const selectedYear = parseInt(year);
                 startDate = startOfYear(new Date(selectedYear, 0));
                 endDate = endOfYear(new Date(selectedYear, 0));
                 reportTitle = `Yearly Report: ${year}`;
+            } else if (reportType === 'custom' && dateRange?.from && dateRange?.to) {
+                startDate = dateRange.from;
+                endDate = dateRange.to;
+                reportTitle = `Custom Report: ${format(startDate, 'dd MMM yyyy')} - ${format(endDate, 'dd MMM yyyy')}`;
+            } else {
+                 toast({
+                    variant: 'destructive',
+                    title: 'Invalid Selection',
+                    description: 'Please provide all necessary date information.',
+                });
+                return;
             }
 
             const transactionsQuery = query(
@@ -108,12 +129,12 @@ export default function ReportsPage() {
             const endingFund = settings.totalFund;
             const startingFund = endingFund - netChange;
             
-            const summary = {
-                'Starting Fund': startingFund,
-                'Total Deposits': totalDeposits,
-                'Total Withdrawals': totalWithdrawals,
-                'Net Change': netChange,
-                'Ending Fund (Remaining Balance)': endingFund,
+             const summary = {
+                'Starting Fund': startingFund.toFixed(2),
+                'Total Deposits': totalDeposits.toFixed(2),
+                'Total Withdrawals': totalWithdrawals.toFixed(2),
+                'Net Change': netChange.toFixed(2),
+                'Ending Fund (Remaining Balance)': endingFund.toFixed(2),
             };
 
             const dataForExport = transactions.map(tx => ({
@@ -121,7 +142,7 @@ export default function ReportsPage() {
                 'Date': tx.date,
                 'Type': tx.type,
                 'Description': tx.description,
-                'Amount': tx.amount,
+                'Amount': tx.amount.toFixed(2),
             }));
 
 
@@ -131,11 +152,12 @@ export default function ReportsPage() {
 
                 // Add summary table
                 autoTable(doc, {
-                    body: Object.entries(summary).map(([key, value]) => [key, String(value.toFixed(2))]),
+                    body: Object.entries(summary),
                     startY: 22,
                     theme: 'striped',
                     styles: { fontSize: 10 },
-                    headStyles: { fillColor: [22, 163, 74] },
+                    head: [['Metric', 'Amount']],
+                    headStyles: { fillColor: [34, 139, 34] },
                 });
                 
                 // Add main data table
@@ -145,9 +167,9 @@ export default function ReportsPage() {
                     startY: (doc as any).lastAutoTable.finalY + 10,
                 });
 
-                doc.save(`report-${reportType}-${year}${month ? '-' + month : ''}.pdf`);
+                doc.save(`report-${reportType}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
             } else if (fileFormat === 'excel') {
-                const summarySheetData = Object.entries(summary).map(([key, value]) => ({ 'Metric': key, 'Amount (₹)': value }));
+                const summarySheetData = Object.entries(summary).map(([key, value]) => ({ 'Metric': key, 'Amount': parseFloat(value) }));
                 const summaryWorksheet = XLSX.utils.json_to_sheet(summarySheetData);
                 const dataWorksheet = XLSX.utils.json_to_sheet(dataForExport);
                 
@@ -155,7 +177,7 @@ export default function ReportsPage() {
                 XLSX.utils.book_append_sheet(workbook, summaryWorksheet, 'Summary');
                 XLSX.utils.book_append_sheet(workbook, dataWorksheet, 'Transactions');
                 
-                XLSX.writeFile(workbook, `report-${reportType}-${year}${month ? '-' + month : ''}.xlsx`);
+                XLSX.writeFile(workbook, `report-${reportType}-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
             }
              toast({
                 title: 'Report Generated',
@@ -211,6 +233,10 @@ export default function ReportsPage() {
                                                     <FormControl><RadioGroupItem value="yearly" /></FormControl>
                                                     <FormLabel className="font-normal">Yearly</FormLabel>
                                                 </FormItem>
+                                                <FormItem className="flex items-center space-x-3 space-y-0">
+                                                    <FormControl><RadioGroupItem value="custom" /></FormControl>
+                                                    <FormLabel className="font-normal">Custom Range</FormLabel>
+                                                </FormItem>
                                             </RadioGroup>
                                         </FormControl>
                                         <FormMessage />
@@ -218,42 +244,93 @@ export default function ReportsPage() {
                                 )}
                             />
 
-                            <div className="flex gap-4">
-                                <FormField
-                                    control={form.control}
-                                    name="year"
-                                    render={({ field }) => (
-                                        <FormItem className="flex-1">
-                                            <FormLabel>Year</FormLabel>
-                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                                <FormControl><SelectTrigger><SelectValue placeholder="Select a year" /></SelectTrigger></FormControl>
-                                                <SelectContent>
-                                                    {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-                                                </SelectContent>
-                                            </Select>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                {reportType === 'monthly' && (
+                             { (reportType === 'monthly' || reportType === 'yearly') && (
+                                <div className="flex gap-4">
                                     <FormField
                                         control={form.control}
-                                        name="month"
+                                        name="year"
                                         render={({ field }) => (
                                             <FormItem className="flex-1">
-                                                <FormLabel>Month</FormLabel>
+                                                <FormLabel>Year</FormLabel>
                                                 <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                                    <FormControl><SelectTrigger><SelectValue placeholder="Select a month" /></SelectTrigger></FormControl>
+                                                    <FormControl><SelectTrigger><SelectValue placeholder="Select a year" /></SelectTrigger></FormControl>
                                                     <SelectContent>
-                                                        {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                                                        {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
                                                     </SelectContent>
                                                 </Select>
                                                 <FormMessage />
                                             </FormItem>
                                         )}
                                     />
-                                )}
-                            </div>
+                                    {reportType === 'monthly' && (
+                                        <FormField
+                                            control={form.control}
+                                            name="month"
+                                            render={({ field }) => (
+                                                <FormItem className="flex-1">
+                                                    <FormLabel>Month</FormLabel>
+                                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                        <FormControl><SelectTrigger><SelectValue placeholder="Select a month" /></SelectTrigger></FormControl>
+                                                        <SelectContent>
+                                                            {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                    )}
+                                </div>
+                            )}
+
+                            {reportType === 'custom' && (
+                                <FormField
+                                    control={form.control}
+                                    name="dateRange"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-col">
+                                            <FormLabel>Date range</FormLabel>
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button
+                                                        id="date"
+                                                        variant={"outline"}
+                                                        className={cn(
+                                                            "w-[300px] justify-start text-left font-normal",
+                                                            !field.value?.from && "text-muted-foreground"
+                                                        )}
+                                                    >
+                                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                                        {field.value?.from ? (
+                                                            field.value.to ? (
+                                                                <>
+                                                                    {format(field.value.from, "LLL dd, y")} -{" "}
+                                                                    {format(field.value.to, "LLL dd, y")}
+                                                                </>
+                                                            ) : (
+                                                                format(field.value.from, "LLL dd, y")
+                                                            )
+                                                        ) : (
+                                                            <span>Pick a date range</span>
+                                                        )}
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-auto p-0" align="start">
+                                                    <Calendar
+                                                        initialFocus
+                                                        mode="range"
+                                                        defaultMonth={field.value?.from}
+                                                        selected={{from: field.value?.from!, to: field.value?.to}}
+                                                        onSelect={field.onChange}
+                                                        numberOfMonths={2}
+                                                    />
+                                                </PopoverContent>
+                                            </Popover>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            )}
 
                              <FormField
                                 control={form.control}
@@ -292,3 +369,5 @@ export default function ReportsPage() {
         </div>
     );
 }
+
+    
