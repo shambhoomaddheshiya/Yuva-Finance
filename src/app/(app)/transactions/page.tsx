@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search } from 'lucide-react';
 import { collection, doc, getDoc, query, writeBatch } from 'firebase/firestore';
-import { format } from 'date-fns';
+import { format, getYear } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
@@ -317,35 +317,58 @@ export default function TransactionsPage() {
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
+  const [filter, setFilter] = useState('all');
+  const [selectedYear, setSelectedYear] = useState<string>(String(getYear(new Date())));
+  const [selectedMonth, setSelectedMonth] = useState<string>(String(new Date().getMonth()));
 
   const loading = txLoading || membersLoading;
-  
+
+  const years = Array.from({ length: 10 }, (_, i) => getYear(new Date()) - i);
+  const months = Array.from({ length: 12 }, (_, i) => ({
+      value: String(i),
+      label: format(new Date(0, i), 'MMMM'),
+  }));
+
   const filteredTransactions = useMemo(() => {
     if (!transactions || !members) return [];
     
-    const sortedTransactions = [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    let intermediateList = [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const typeFiltered = sortedTransactions.filter(tx => {
-        if (typeFilter === 'all') return true;
-        return tx.type === typeFilter;
+    // Date and Type Filtering
+    intermediateList = intermediateList.filter(tx => {
+        const txDate = new Date(tx.date);
+        const txYear = getYear(txDate);
+        const txMonth = txDate.getMonth();
+
+        switch (filter) {
+            case 'deposit':
+            case 'withdrawal':
+                return tx.type === filter;
+            case 'monthly':
+                return txYear === parseInt(selectedYear) && txMonth === parseInt(selectedMonth);
+            case 'yearly':
+                return txYear === parseInt(selectedYear);
+            case 'all':
+            default:
+                return true;
+        }
     });
 
-    if (!searchQuery) return typeFiltered;
+    // Search Query Filtering
+    if (!searchQuery) return intermediateList;
 
     const lowercasedQuery = searchQuery.toLowerCase();
     
-    return typeFiltered.filter(tx => {
+    return intermediateList.filter(tx => {
       const member = members.find(m => m.id === tx.memberId);
       const memberName = member ? member.name.toLowerCase() : '';
       
       return (
         memberName.includes(lowercasedQuery) ||
-        tx.description.toLowerCase().includes(lowercasedQuery) ||
-        tx.type.toLowerCase().includes(lowercasedQuery)
+        tx.description.toLowerCase().includes(lowercasedQuery)
       );
     });
-  }, [transactions, members, searchQuery, typeFilter]);
+  }, [transactions, members, searchQuery, filter, selectedYear, selectedMonth]);
 
   return (
     <div className="space-y-6">
@@ -383,25 +406,40 @@ export default function TransactionsPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <RadioGroup
-              value={typeFilter}
-              onValueChange={setTypeFilter}
-              className="flex items-center space-x-4"
-            >
-              <Label>Show:</Label>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="all" id="all" />
-                <Label htmlFor="all">All</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="deposit" id="deposit" />
-                <Label htmlFor="deposit">Deposits</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="withdrawal" id="withdrawal" />
-                <Label htmlFor="withdrawal">Withdrawals</Label>
-              </div>
-            </RadioGroup>
+
+            <div className="flex flex-wrap items-center gap-4">
+              <RadioGroup
+                value={filter}
+                onValueChange={setFilter}
+                className="flex flex-wrap items-center gap-x-4 gap-y-2"
+              >
+                <Label className="font-semibold">Show:</Label>
+                <div className="flex items-center space-x-2"><RadioGroupItem value="all" id="all" /><Label htmlFor="all">All</Label></div>
+                <div className="flex items-center space-x-2"><RadioGroupItem value="deposit" id="deposit" /><Label htmlFor="deposit">Deposits</Label></div>
+                <div className="flex items-center space-x-2"><RadioGroupItem value="withdrawal" id="withdrawal" /><Label htmlFor="withdrawal">Withdrawals</Label></div>
+                <div className="flex items-center space-x-2"><RadioGroupItem value="monthly" id="monthly" /><Label htmlFor="monthly">Monthly</Label></div>
+                <div className="flex items-center space-x-2"><RadioGroupItem value="yearly" id="yearly" /><Label htmlFor="yearly">Yearly</Label></div>
+              </RadioGroup>
+              
+              {(filter === 'monthly' || filter === 'yearly') && (
+                <div className="flex items-center gap-2">
+                    <Select onValueChange={setSelectedYear} value={selectedYear}>
+                        <SelectTrigger className="w-[120px]"><SelectValue placeholder="Year" /></SelectTrigger>
+                        <SelectContent>
+                            {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                    {filter === 'monthly' && (
+                        <Select onValueChange={setSelectedMonth} value={selectedMonth}>
+                           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Month" /></SelectTrigger>
+                            <SelectContent>
+                                {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    )}
+                </div>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -444,7 +482,7 @@ export default function TransactionsPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center">
-                     {searchQuery || typeFilter !== 'all' ? 'No transactions match your filters.' : 'No transactions found.'}
+                     {searchQuery || filter !== 'all' ? 'No transactions match your filters.' : 'No transactions found.'}
                   </TableCell>
                 </TableRow>
               )}
