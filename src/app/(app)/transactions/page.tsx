@@ -57,6 +57,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { DateRange } from 'react-day-picker';
 
 const transactionSchema = z.object({
   memberId: z.string().nonempty('Please select a member.'),
@@ -320,6 +321,7 @@ export default function TransactionsPage() {
   const [filter, setFilter] = useState('all');
   const [selectedYear, setSelectedYear] = useState<string>(String(getYear(new Date())));
   const [selectedMonth, setSelectedMonth] = useState<string>(String(new Date().getMonth()));
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
 
   const loading = txLoading || membersLoading;
 
@@ -336,7 +338,8 @@ export default function TransactionsPage() {
 
     // Date and Type Filtering
     intermediateList = intermediateList.filter(tx => {
-        const txDate = new Date(tx.date);
+        // Firestore date is 'yyyy-MM-dd' string, add time to avoid timezone issues
+        const txDate = new Date(`${tx.date}T00:00:00`);
         const txYear = getYear(txDate);
         const txMonth = txDate.getMonth();
 
@@ -348,6 +351,13 @@ export default function TransactionsPage() {
                 return txYear === parseInt(selectedYear) && txMonth === parseInt(selectedMonth);
             case 'yearly':
                 return txYear === parseInt(selectedYear);
+            case 'custom':
+                if (dateRange?.from && dateRange?.to) {
+                    const fromDate = dateRange.from;
+                    const toDate = dateRange.to;
+                    return txDate >= fromDate && txDate <= toDate;
+                }
+                return true; // if no range, show all (or could be false)
             case 'all':
             default:
                 return true;
@@ -368,7 +378,7 @@ export default function TransactionsPage() {
         tx.description.toLowerCase().includes(lowercasedQuery)
       );
     });
-  }, [transactions, members, searchQuery, filter, selectedYear, selectedMonth]);
+  }, [transactions, members, searchQuery, filter, selectedYear, selectedMonth, dateRange]);
 
   return (
     <div className="space-y-6">
@@ -419,6 +429,7 @@ export default function TransactionsPage() {
                 <div className="flex items-center space-x-2"><RadioGroupItem value="withdrawal" id="withdrawal" /><Label htmlFor="withdrawal">Withdrawals</Label></div>
                 <div className="flex items-center space-x-2"><RadioGroupItem value="monthly" id="monthly" /><Label htmlFor="monthly">Monthly</Label></div>
                 <div className="flex items-center space-x-2"><RadioGroupItem value="yearly" id="yearly" /><Label htmlFor="yearly">Yearly</Label></div>
+                <div className="flex items-center space-x-2"><RadioGroupItem value="custom" id="custom" /><Label htmlFor="custom">Custom</Label></div>
               </RadioGroup>
               
               {(filter === 'monthly' || filter === 'yearly') && (
@@ -438,6 +449,44 @@ export default function TransactionsPage() {
                         </Select>
                     )}
                 </div>
+              )}
+               {filter === 'custom' && (
+                 <Popover>
+                    <PopoverTrigger asChild>
+                        <Button
+                            id="date"
+                            variant={"outline"}
+                            className={cn(
+                                "w-[300px] justify-start text-left font-normal",
+                                !dateRange && "text-muted-foreground"
+                            )}
+                        >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {dateRange?.from ? (
+                                dateRange.to ? (
+                                    <>
+                                        {format(dateRange.from, "LLL dd, y")} -{" "}
+                                        {format(dateRange.to, "LLL dd, y")}
+                                    </>
+                                ) : (
+                                    format(dateRange.from, "LLL dd, y")
+                                )
+                            ) : (
+                                <span>Pick a date range</span>
+                            )}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                            initialFocus
+                            mode="range"
+                            defaultMonth={dateRange?.from}
+                            selected={dateRange}
+                            onSelect={setDateRange}
+                            numberOfMonths={2}
+                        />
+                    </PopoverContent>
+                </Popover>
               )}
             </div>
           </div>
@@ -472,7 +521,7 @@ export default function TransactionsPage() {
                         {tx.type}
                       </div>
                     </TableCell>
-                    <TableCell>{new Date(tx.date).toLocaleDateString()}</TableCell>
+                    <TableCell>{new Date(`${tx.date}T00:00:00`).toLocaleDateString()}</TableCell>
                     <TableCell>{tx.description}</TableCell>
                     <TableCell className={`text-right font-mono font-semibold ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
                       {tx.type === 'deposit' ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}
