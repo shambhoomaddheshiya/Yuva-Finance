@@ -18,6 +18,10 @@
           "type": "string",
           "description": "The phone number of the member."
         },
+        "aadhaar": {
+          "type": "string",
+          "description": "The Aadhaar card number of the member."
+        },
         "joinDate": {
           "type": "string",
           "description": "The date the member joined the group savings system.",
@@ -44,6 +48,7 @@
         "id",
         "name",
         "phone",
+        "aadhaar",
         "joinDate",
         "totalDeposited",
         "totalWithdrawn",

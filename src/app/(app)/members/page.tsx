@@ -71,6 +71,7 @@ const memberSchema = z.object({
   id: z.string().min(1, 'Member ID cannot be empty.'),
   name: z.string().min(2, 'Name must be at least 2 characters.'),
   phone: z.string().regex(/^\d{10}$/, 'Phone number must be 10 digits.'),
+  aadhaar: z.string().regex(/^\d{12}$/, 'Aadhaar must be 12 digits.'),
   joinDate: z.date({ required_error: 'A join date is required.' }),
 });
 
@@ -86,6 +87,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
       id: member?.id || '',
       name: member?.name || '', 
       phone: member?.phone || '',
+      aadhaar: member?.aadhaar || '',
       joinDate: member ? new Date(member.joinDate) : new Date(),
     },
   });
@@ -104,7 +106,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
                 const newMemberDocRef = doc(firestore, `users/${user.uid}/members`, values.id);
                 const newMemberData: Member = {
                     ...member,
-                    id: values.id, name: values.name, phone: values.phone, joinDate: values.joinDate.toISOString(),
+                    id: values.id, name: values.name, phone: values.phone, aadhaar: values.aadhaar, joinDate: values.joinDate.toISOString(),
                 };
                 batch.set(newMemberDocRef, newMemberData);
 
@@ -123,7 +125,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
                 // ID is the same, simple update
                 const memberRef = doc(firestore, `users/${user.uid}/members`, member.id);
                 const updatePayload: Partial<Member> = {
-                    name: values.name, phone: values.phone, joinDate: values.joinDate.toISOString()
+                    name: values.name, phone: values.phone, aadhaar: values.aadhaar, joinDate: values.joinDate.toISOString()
                 };
                 batch.update(memberRef, updatePayload);
                 toast({ title: 'Success!', description: 'Member has been updated.' });
@@ -191,7 +193,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
             <FormItem>
               <FormLabel>Full Name</FormLabel>
               <FormControl>
-                <Input placeholder="राहुल शर्मा" {...field} />
+                <Input placeholder="Rahul Sharma" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -205,6 +207,19 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
               <FormLabel>Phone Number</FormLabel>
               <FormControl>
                 <Input placeholder="9876543210" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+         <FormField
+          control={form.control}
+          name="aadhaar"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Aadhaar Number</FormLabel>
+              <FormControl>
+                <Input placeholder="123456789012" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -274,6 +289,7 @@ function PassbookView({ member }: { member: Member }) {
             <div className="grid grid-cols-2 gap-2 text-sm">
                 <p><span className="font-semibold">Name:</span> {member.name}</p>
                 <p><span className="font-semibold">ID:</span> {member.id}</p>
+                <p><span className="font-semibold">Aadhaar:</span> {member.aadhaar}</p>
                 <p><span className="font-semibold">Joined:</span> {new Date(member.joinDate).toLocaleDateString()}</p>
                 <p><span className="font-semibold">Balance:</span> ₹{member.currentBalance.toLocaleString('en-IN')}</p>
             </div>
@@ -435,7 +451,7 @@ export default function MembersPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Member ID</TableHead>
-                <TableHead>Phone</TableHead>
+                <TableHead>Aadhaar</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -466,7 +482,7 @@ export default function MembersPage() {
                       </div>
                     </TableCell>
                     <TableCell>{member.id}</TableCell>
-                    <TableCell>{member.phone}</TableCell>
+                    <TableCell>{member.aadhaar}</TableCell>
                     <TableCell>{new Date(member.joinDate).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right font-mono">₹{member.currentBalance.toLocaleString('en-IN')}</TableCell>
                      <TableCell className="text-right">
@@ -493,7 +509,7 @@ export default function MembersPage() {
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                    </TableCell>
+                    </TableCell>                  
                   </TableRow>
                 ))
               ) : (

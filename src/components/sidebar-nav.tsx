@@ -8,6 +8,7 @@ import {
   ArrowRightLeft,
   Settings,
   HandCoins,
+  FileText,
 } from 'lucide-react';
 
 import {
@@ -26,6 +27,7 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/members', label: 'Members', icon: Users },
   { href: '/transactions', label: 'Transactions', icon: ArrowRightLeft },
+  { href: '/reports', label: 'Reports', icon: FileText },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
