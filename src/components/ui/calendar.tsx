@@ -60,6 +60,7 @@ function Calendar({
         IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
       }}
       captionLayout="dropdown-buttons"
+      paged={props.numberOfMonths && props.numberOfMonths > 1}
       {...props}
     />
   )
