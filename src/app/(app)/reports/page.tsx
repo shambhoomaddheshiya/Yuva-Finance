@@ -24,16 +24,14 @@ import { DateRangePicker } from '@/components/date-range-picker';
 
 
 const reportSchema = z.object({
-  reportType: z.enum(['monthly', 'yearly', 'all', 'custom']),
+  reportType: z.enum(['monthly', 'yearly', 'all']),
   year: z.string().optional(),
   month: z.string().optional(),
-  dateRange: z.custom<DateRange>(v => v instanceof Object && 'from' in v && 'to' in v).optional(),
   transactionType: z.enum(['all', 'deposit', 'withdrawal']),
   format: z.enum(['pdf', 'excel']),
 }).refine(data => {
     if (data.reportType === 'monthly') return !!data.year && !!data.month;
     if (data.reportType === 'yearly') return !!data.year;
-    if (data.reportType === 'custom') return !!data.dateRange?.from && !!data.dateRange?.to;
     return true; 
 }, {
     message: 'Please complete all required fields for the selected report type.',
@@ -76,7 +74,7 @@ export default function ReportsPage() {
         setIsLoading(true);
 
         try {
-            const { reportType, year, month, dateRange, transactionType, format: fileFormat } = values;
+            const { reportType, year, month, transactionType, format: fileFormat } = values;
             let startDate: Date | null = null;
             let endDate: Date | null = null;
             let reportTitle: string = 'All Transactions Report';
@@ -92,10 +90,6 @@ export default function ReportsPage() {
                 startDate = startOfYear(new Date(selectedYear, 0));
                 endDate = endOfYear(new Date(selectedYear, 0));
                 reportTitle = `Yearly Report: ${year}`;
-            } else if (reportType === 'custom' && dateRange?.from && dateRange.to) {
-                startDate = dateRange.from;
-                endDate = dateRange.to;
-                reportTitle = `Custom Range Report: ${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`;
             } else if (reportType !== 'all') {
                  toast({
                     variant: 'destructive',
@@ -139,7 +133,8 @@ export default function ReportsPage() {
             const netChange = totalDepositsForPeriod - totalWithdrawalsForPeriod;
             
             const totalDepositedAllTime = members.reduce((sum, member) => sum + member.totalDeposited, 0);
-            const totalRemainingFund = members.filter(m => m.status === 'active').reduce((sum, member) => sum + member.currentBalance + member.interestEarned, 0);
+            const totalWithdrawnAllTime = members.reduce((sum, member) => sum + member.totalWithdrawn, 0);
+            const totalRemainingFund = totalDepositedAllTime - totalWithdrawnAllTime;
             
              const summary = {
                 'Total Deposited (All Time)': `Rs. ${totalDepositedAllTime.toLocaleString('en-IN')}`,
@@ -249,10 +244,6 @@ export default function ReportsPage() {
                                                     <FormControl><RadioGroupItem value="yearly" /></FormControl>
                                                     <FormLabel className="font-normal">Yearly</FormLabel>
                                                 </FormItem>
-                                                 <FormItem className="flex items-center space-x-3 space-y-0">
-                                                    <FormControl><RadioGroupItem value="custom" /></FormControl>
-                                                    <FormLabel className="font-normal">Custom Range</FormLabel>
-                                                </FormItem>
                                             </RadioGroup>
                                         </FormControl>
                                         <FormMessage />
@@ -297,23 +288,6 @@ export default function ReportsPage() {
                                         />
                                     )}
                                 </div>
-                            )}
-
-                             {reportType === 'custom' && (
-                                <FormField
-                                    control={form.control}
-                                    name="dateRange"
-                                    render={({ field }) => (
-                                        <FormItem className="flex flex-col">
-                                            <FormLabel>Date range</FormLabel>
-                                            <DateRangePicker
-                                                value={field.value}
-                                                onChange={field.onChange}
-                                            />
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
                             )}
 
                              <FormField
