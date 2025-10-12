@@ -49,27 +49,6 @@ function GoogleIcon() {
   );
 }
 
-const createDefaultSettings = async (firestore: any, userId: string) => {
-    const settingsDocRef = doc(firestore, `users/${userId}/groupSettings`, 'settings');
-    const docSnap = await getDoc(settingsDocRef);
-
-    if (!docSnap.exists()) {
-      console.log(`Creating default settings for user ${userId}...`);
-      const defaultSettings: GroupSettings = {
-        groupName: 'My Savings Group',
-        monthlyContribution: 1000,
-        interestRate: 2,
-        totalMembers: 0,
-        totalFund: 0,
-        establishedDate: new Date().toISOString(),
-      };
-      await setDoc(settingsDocRef, defaultSettings);
-    } else {
-        console.log(`Settings already exist for user ${userId}. Skipping creation.`);
-    }
-}
-
-
 export default function LoginPage() {
   const auth = useAuth();
   const firestore = useFirestore();
@@ -86,12 +65,11 @@ export default function LoginPage() {
   });
 
   async function onEmailSubmit(values: z.infer<typeof formSchema>) {
-    if (!auth || !firestore) return;
+    if (!auth) return;
     setIsLoading(true);
     try {
-        const result: UserCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
-        const user = result.user;
-        await createDefaultSettings(firestore, user.uid);
+        await signInWithEmailAndPassword(auth, values.email, values.password);
+        // The redirect is handled by the layout
     } catch(error: any) {
          toast({
             variant: 'destructive',
@@ -103,14 +81,14 @@ export default function LoginPage() {
   }
 
   async function onGoogleSubmit() {
-    if (!auth || !firestore) return;
+    if (!auth) return;
     setIsGoogleLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      const result: UserCredential = await signInWithPopup(auth, provider);
-      const user = result.user;
-      await createDefaultSettings(firestore, user.uid);
-      // Redirect is handled by the layout
+      // The sign-in process will trigger the auth state listener in the layout
+      // which will handle the redirect. We don't need to do anything with the result here.
+      // We also assume that settings are created on sign-up, not sign-in.
+      await signInWithPopup(auth, provider);
     } catch (error: any) {
       toast({
         variant: 'destructive',

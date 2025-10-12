@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -5,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Loader2 } from 'lucide-react';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useToast } from '@/hooks/use-toast';
@@ -46,58 +47,14 @@ export default function SettingsPage() {
   });
 
   useEffect(() => {
-    if (isInitializing) {
-      return;
+    if (settings) {
+      form.reset({
+        groupName: settings.groupName,
+        monthlyContribution: settings.monthlyContribution,
+        interestRate: settings.interestRate,
+      });
     }
-
-    if (user && firestore) {
-      if (settings) {
-        form.reset({
-          groupName: settings.groupName,
-          monthlyContribution: settings.monthlyContribution,
-          interestRate: settings.interestRate,
-        });
-      } else if (settingsRef) {
-        const createDefaultSettings = async () => {
-          console.log(`Creating default settings for user ${user.uid}...`);
-          
-          try {
-            // Check one more time if doc exists before writing to prevent race conditions
-            const docSnap = await getDoc(settingsRef);
-            if (docSnap.exists()) {
-              console.log("Settings already exist, aborting creation.");
-              return;
-            }
-
-            const newSettings: GroupSettings = {
-              groupName: 'My Savings Group',
-              monthlyContribution: 1000,
-              interestRate: 2,
-              totalMembers: 0, // Start with 0 members
-              totalFund: 0,    // Start with 0 fund
-              establishedDate: new Date().toISOString(),
-            };
-
-            await setDoc(settingsRef, newSettings);
-            form.reset(newSettings); 
-            toast({
-              title: 'Settings Initialized',
-              description: 'Default group settings have been created for you.',
-            });
-          } catch (e: any) {
-            console.error("Failed to create default settings:", e);
-            toast({
-              variant: 'destructive',
-              title: 'Error Initializing Settings',
-              description: e.message || 'Could not initialize your settings. Please refresh the page.',
-            });
-          }
-        };
-        
-        createDefaultSettings();
-      }
-    }
-  }, [isInitializing, user, firestore, settings, settingsRef, form, toast]);
+  }, [settings, form]);
 
 
   async function onSubmit(values: z.infer<typeof settingsSchema>) {
