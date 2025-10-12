@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, getYear } from 'date-fns';
 import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc } from 'firebase/firestore';
 import { useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
 
@@ -269,6 +269,9 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
+                    captionLayout="dropdown-buttons"
+                    fromYear={getYear(new Date()) - 10}
+                    toYear={getYear(new Date())}
                     selected={field.value}
                     onSelect={field.onChange}
                     initialFocus

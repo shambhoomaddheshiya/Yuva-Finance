@@ -299,6 +299,9 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
+                    captionLayout="dropdown-buttons"
+                    fromYear={getYear(new Date()) - 10}
+                    toYear={getYear(new Date())}
                     selected={field.value}
                     onSelect={field.onChange}
                     disabled={(date) => date > new Date() || date < new Date('1900-01-01')}
@@ -470,6 +473,9 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
+                    captionLayout="dropdown-buttons"
+                    fromYear={getYear(new Date()) - 10}
+                    toYear={getYear(new Date())}
                     selected={field.value}
                     onSelect={field.onChange}
                     disabled={(date) => date > new Date() || date < new Date('1900-01-01')}
