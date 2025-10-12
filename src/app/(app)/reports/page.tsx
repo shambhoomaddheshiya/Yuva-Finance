@@ -338,6 +338,9 @@ export default function ReportsPage() {
                                                     <Calendar
                                                         initialFocus
                                                         mode="range"
+                                                        captionLayout="dropdown-buttons"
+                                                        fromYear={getYear(new Date()) - 10}
+                                                        toYear={getYear(new Date())}
                                                         defaultMonth={field.value?.from}
                                                         selected={{from: field.value?.from!, to: field.value?.to}}
                                                         onSelect={field.onChange}
