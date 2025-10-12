@@ -11,89 +11,83 @@ import { ScrollArea } from "./scroll-area";
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>
 
-function CalendarCaption({
-  onToMonthChange,
-  ...props
-}: React.ComponentProps<typeof DayPicker> & { onToMonthChange?: (month: Date) => void }) {
-  const { toMonth, fromMonth, fromYear, toYear } = useDayPicker();
-  const { goToMonth, nextMonth, previousMonth } = useNavigation();
+function CalendarCaption(props: React.ComponentProps<typeof DayPicker>) {
+    const { fromDate, toDate } = props;
+    const { goToMonth, nextMonth, previousMonth } = useNavigation();
 
-  return (
-    <div className="flex justify-center pt-1 relative items-center">
-      <div className="flex gap-2 items-center">
-        <DayPicker
-          {...props}
-          components={{
-            Dropdown: ({ value, onChange, children, ...dropdownProps }: DropdownProps) => {
-              const options = React.Children.toArray(
-                children
-              ) as React.ReactElement<React.HTMLProps<HTMLOptionElement>>[];
-              const selected = options.find((child) => child.props.value === value);
-              const handleChange = (value: string) => {
-                const event = {
-                  target: { value },
-                } as React.ChangeEvent<HTMLSelectElement>;
-                onChange?.(event);
-              };
-              const isToMonth = dropdownProps.name === "toMonth";
-              return (
-                <Select
-                  value={value?.toString()}
-                  onValueChange={(value) => {
-                    if (isToMonth && onToMonthChange) {
-                      const newToMonth = new Date(toMonth || new Date());
-                      if (dropdownProps.name.includes("year")) {
-                        newToMonth.setFullYear(Number(value));
-                      } else {
-                        newToMonth.setMonth(Number(value));
-                      }
-                      onToMonthChange(newToMonth);
-                    } else {
-                      handleChange(value);
-                    }
-                  }}
+    const fromYear = fromDate ? fromDate.getFullYear() : new Date().getFullYear() - 10;
+    const toYear = toDate ? toDate.getFullYear() : new Date().getFullYear();
+
+    const months = Array.from({ length: 12 }, (_, i) => ({
+      value: i,
+      label: new Date(0, i).toLocaleString(props.locale, { month: "long" }),
+    }));
+    const years = Array.from({ length: toYear - fromYear + 1 }, (_, i) => fromYear + i);
+
+
+    const handleMonthChange = (newMonth: number) => {
+        if (!props.month) return;
+        goToMonth(new Date(props.month.getFullYear(), newMonth, 1));
+    };
+
+    const handleYearChange = (newYear: number) => {
+        if (!props.month) return;
+        goToMonth(new Date(newYear, props.month.getMonth(), 1));
+    };
+
+
+    return (
+        <div className="flex justify-center pt-1 relative items-center">
+            <div className="flex items-center gap-2">
+                 <Select
+                    value={String(props.month?.getMonth())}
+                    onValueChange={(value) => handleMonthChange(Number(value))}
                 >
-                  <SelectTrigger className="w-auto focus:ring-0 focus:ring-offset-0 h-auto p-1 text-xs">
-                    <SelectValue>{selected?.props?.children}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent position="popper">
-                     <ScrollArea className="h-48">
-                        {options.map((option, id: number) => (
-                          <SelectItem
-                            key={`${option.props.value}-${id}`}
-                            value={option.props.value?.toString() ?? ""}
-                          >
-                            {option.props.children}
-                          </SelectItem>
+                    <SelectTrigger className="w-auto focus:ring-0 focus:ring-offset-0 h-auto p-1 text-xs">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {months.map((month) => (
+                            <SelectItem key={month.value} value={String(month.value)}>{month.label}</SelectItem>
                         ))}
-                     </ScrollArea>
-                  </SelectContent>
+                    </SelectContent>
                 </Select>
-              );
-            },
-          }}
-        />
-      </div>
-      <div className="space-x-1 flex items-center">
-        <Button
-          onClick={() => previousMonth && goToMonth(previousMonth)}
-          disabled={!previousMonth}
-          variant="outline"
-          className="h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute left-1"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <Button
-          onClick={() => nextMonth && goToMonth(nextMonth)}
-          disabled={!nextMonth}
-          variant="outline"
-          className="h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute right-1"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
+                 <Select
+                    value={String(props.month?.getFullYear())}
+                    onValueChange={(value) => handleYearChange(Number(value))}
+                >
+                    <SelectTrigger className="w-auto focus:ring-0 focus:ring-offset-0 h-auto p-1 text-xs">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <ScrollArea className="h-48">
+                            {years.map((year) => (
+                                <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                            ))}
+                        </ScrollArea>
+                    </SelectContent>
+                </Select>
+            </div>
+             <div className="space-x-1 flex items-center absolute right-0">
+                <Button
+                    onClick={() => previousMonth && goToMonth(previousMonth)}
+                    disabled={!previousMonth}
+                    variant="outline"
+                    className="h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
+                >
+                    <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                    onClick={() => nextMonth && goToMonth(nextMonth)}
+                    disabled={!nextMonth}
+                    variant="outline"
+                    className="h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
+                >
+                    <ChevronRight className="h-4 w-4" />
+                </Button>
+            </div>
+        </div>
+    );
 }
 
 
@@ -101,9 +95,8 @@ function Calendar({
   className,
   classNames,
   showOutsideDays = true,
-  onToMonthChange,
   ...props
-}: CalendarProps & { onToMonthChange?: (month: Date) => void }) {
+}: CalendarProps) {
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
@@ -111,7 +104,6 @@ function Calendar({
       classNames={{
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
-        caption: "hidden",
         caption_label: "text-sm font-medium hidden",
         caption_dropdowns: "flex gap-2 items-center",
         nav: "space-x-1 flex items-center",
@@ -144,9 +136,7 @@ function Calendar({
         ...classNames,
       }}
       components={{
-        Caption: (captionProps) => (
-          <CalendarCaption {...props} {...captionProps} onToMonthChange={onToMonthChange} />
-        ),
+        Caption: props.captionLayout === 'dropdown-buttons' ? CalendarCaption : undefined,
         IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
         IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
       }}
