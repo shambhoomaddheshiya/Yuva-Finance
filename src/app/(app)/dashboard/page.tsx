@@ -1,16 +1,15 @@
 
 'use client';
 
-import { useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
-import { ArrowDown, ArrowUp, Banknote, Users, Percent, Calendar, PiggyBank } from 'lucide-react';
+import { Banknote, Users, Percent, PiggyBank } from 'lucide-react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useDoc } from '@/firebase/firestore/use-doc';
-import { collection, query, doc, setDoc } from 'firebase/firestore';
+import { collection, query, doc } from 'firebase/firestore';
 
 function StatCard({
   title,
@@ -77,28 +76,28 @@ export default function DashboardPage() {
           title="Total Remaining Fund"
           value={settings ? `₹${settings.totalFund.toLocaleString('en-IN')}` : '...'}
           icon={Banknote}
-          loading={loading}
+          loading={settingsLoading}
           description="Current cash balance"
         />
          <StatCard
           title="Total Deposited So Far"
           value={members ? `₹${totalDepositedAllTime.toLocaleString('en-IN')}` : '...'}
           icon={PiggyBank}
-          loading={loading}
+          loading={membersLoading}
           description="All-time deposits"
         />
         <StatCard
           title="Total Members"
           value={members ? members.length : '...'}
           icon={Users}
-          loading={loading}
+          loading={membersLoading}
           description="Number of active members"
         />
         <StatCard
           title="Interest Rate"
           value={settings ? `${settings.interestRate}%` : '...'}
           icon={Percent}
-          loading={loading}
+          loading={settingsLoading}
           description="Annual interest rate"
         />
       </div>
@@ -147,21 +146,25 @@ export default function DashboardPage() {
               <div className="space-y-4">
                 {transactions && members && transactions.length > 0 ? (
                   transactions
-                    .sort((a, b) => new Date(b.date as string).getTime() - new Date(a.date as string).getTime())
+                    .sort((a, b) => {
+                      const dateA = a.date instanceof Date ? a.date : (a.date as any).toDate();
+                      const dateB = b.date instanceof Date ? b.date : (b.date as any).toDate();
+                      return dateB.getTime() - dateA.getTime();
+                    })
                     .slice(0, 5)
                     .map((tx) => (
                       <div key={tx.id} className="flex items-center">
                          {tx.type === 'deposit' ? (
-                            <ArrowUp className="h-6 w-6 text-green-500 mr-4"/>
+                            <div className="p-2 bg-green-100 rounded-full mr-4"><ArrowUp className="h-4 w-4 text-green-600"/></div>
                           ) : (
-                            <ArrowDown className="h-6 w-6 text-red-500 mr-4"/>
+                            <div className="p-2 bg-red-100 rounded-full mr-4"><ArrowDown className="h-4 w-4 text-red-600"/></div>
                           )}
                         <div className="flex-1 space-y-1">
                           <p className="text-sm font-medium leading-none">{members.find(m => m.id === tx.memberId)?.name || 'Unknown Member'}</p>
                           <p className="text-sm text-muted-foreground">{tx.description}</p>
                         </div>
                         <div className={`font-medium ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
-                          Rs.{tx.amount.toLocaleString('en-IN')}
+                          ₹{tx.amount.toLocaleString('en-IN')}
                         </div>
                       </div>
                     ))
