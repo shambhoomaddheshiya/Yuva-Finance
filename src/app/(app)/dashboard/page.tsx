@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
-import { ArrowDown, ArrowUp, Banknote, Users, Percent, Calendar } from 'lucide-react';
+import { ArrowDown, ArrowUp, Banknote, Users, Percent, Calendar, PiggyBank } from 'lucide-react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -59,12 +59,14 @@ export default function DashboardPage() {
   
   const loading = settingsLoading || membersLoading || txLoading;
 
-  const totalDeposited = transactions ? transactions.filter(t => t.type === 'deposit').reduce((acc, t) => acc + t.amount, 0) : 0;
-  const totalWithdrawn = transactions ? transactions.filter(t => t.type === 'withdrawal').reduce((acc, t) => acc + t.amount, 0) : 0;
+  const totalDepositedThisPeriod = transactions ? transactions.filter(t => t.type === 'deposit').reduce((acc, t) => acc + t.amount, 0) : 0;
+  const totalWithdrawnThisPeriod = transactions ? transactions.filter(t => t.type === 'withdrawal').reduce((acc, t) => acc + t.amount, 0) : 0;
   
+  const totalDepositedAllTime = members ? members.reduce((sum, member) => sum + member.totalDeposited, 0) : 0;
+
   const chartData = [
-    { name: 'Deposits', total: totalDeposited, fill: 'hsl(var(--primary))' },
-    { name: 'Withdrawals', total: totalWithdrawn, fill: 'hsl(var(--destructive))' },
+    { name: 'Deposits', total: totalDepositedThisPeriod, fill: 'hsl(var(--primary))' },
+    { name: 'Withdrawals', total: totalWithdrawnThisPeriod, fill: 'hsl(var(--destructive))' },
   ];
 
   return (
@@ -72,11 +74,18 @@ export default function DashboardPage() {
       <h1 className="text-3xl font-bold font-headline">Dashboard</h1>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Total Fund"
+          title="Total Remaining Fund"
           value={settings ? `₹${settings.totalFund.toLocaleString('en-IN')}` : '...'}
           icon={Banknote}
           loading={loading}
-          description="Current total fund value"
+          description="Current cash balance"
+        />
+         <StatCard
+          title="Total Deposited So Far"
+          value={members ? `₹${totalDepositedAllTime.toLocaleString('en-IN')}` : '...'}
+          icon={PiggyBank}
+          loading={loading}
+          description="All-time deposits"
         />
         <StatCard
           title="Total Members"
@@ -91,13 +100,6 @@ export default function DashboardPage() {
           icon={Percent}
           loading={loading}
           description="Annual interest rate"
-        />
-        <StatCard
-          title="Established"
-          value={settings ? new Date(settings.establishedDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'long' }) : '...'}
-          icon={Calendar}
-          loading={loading}
-          description="Group formation date"
         />
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
@@ -145,7 +147,7 @@ export default function DashboardPage() {
               <div className="space-y-4">
                 {transactions && members && transactions.length > 0 ? (
                   transactions
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .sort((a, b) => new Date(b.date as string).getTime() - new Date(a.date as string).getTime())
                     .slice(0, 5)
                     .map((tx) => (
                       <div key={tx.id} className="flex items-center">
