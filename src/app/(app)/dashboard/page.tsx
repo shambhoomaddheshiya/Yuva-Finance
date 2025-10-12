@@ -4,12 +4,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
-import { Banknote, Users, Percent, PiggyBank } from 'lucide-react';
+import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp } from 'lucide-react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useDoc } from '@/firebase/firestore/use-doc';
-import { collection, query, doc } from 'firebase/firestore';
+import { collection, query, doc, Timestamp } from 'firebase/firestore';
 
 function StatCard({
   title,
@@ -67,6 +67,17 @@ export default function DashboardPage() {
     { name: 'Deposits', total: totalDepositedThisPeriod, fill: 'hsl(var(--primary))' },
     { name: 'Withdrawals', total: totalWithdrawnThisPeriod, fill: 'hsl(var(--destructive))' },
   ];
+  
+  const getTransactionDate = (tx: Transaction): Date => {
+    if (tx.date instanceof Timestamp) {
+      return tx.date.toDate();
+    }
+    if (tx.date instanceof Date) {
+      return tx.date;
+    }
+    // Fallback for string dates
+    return new Date(tx.date as string);
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -147,8 +158,8 @@ export default function DashboardPage() {
                 {transactions && members && transactions.length > 0 ? (
                   transactions
                     .sort((a, b) => {
-                      const dateA = a.date instanceof Date ? a.date : (a.date as any).toDate();
-                      const dateB = b.date instanceof Date ? b.date : (b.date as any).toDate();
+                      const dateA = getTransactionDate(a);
+                      const dateB = getTransactionDate(b);
                       return dateB.getTime() - dateA.getTime();
                     })
                     .slice(0, 5)
