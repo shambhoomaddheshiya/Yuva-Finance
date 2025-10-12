@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
-import { DayPicker, DropdownProps, useDayPicker, useNavigation } from "react-day-picker"
+import { DayPicker, useDayPicker, useNavigation } from "react-day-picker"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants, Button } from "@/components/ui/button"
@@ -11,28 +11,26 @@ import { ScrollArea } from "./scroll-area";
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>
 
-function CalendarCaption(props: React.ComponentProps<typeof DayPicker>) {
-    const { fromDate, toDate } = props;
+function CalendarCaption(props: { displayMonth: Date }) {
     const { goToMonth, nextMonth, previousMonth } = useNavigation();
+    const { fromDate, toDate } = useDayPicker();
 
-    const fromYear = fromDate ? fromDate.getFullYear() : new Date().getFullYear() - 10;
-    const toYear = toDate ? toDate.getFullYear() : new Date().getFullYear();
+    const fromYear = fromDate?.getFullYear() ?? new Date().getFullYear() - 10;
+    const toYear = toDate?.getFullYear() ?? new Date().getFullYear();
 
     const months = Array.from({ length: 12 }, (_, i) => ({
       value: i,
-      label: new Date(0, i).toLocaleString(props.locale, { month: "long" }),
+      label: new Date(2000, i).toLocaleString(undefined, { month: "long" }),
     }));
     const years = Array.from({ length: toYear - fromYear + 1 }, (_, i) => fromYear + i);
 
 
     const handleMonthChange = (newMonth: number) => {
-        if (!props.month) return;
-        goToMonth(new Date(props.month.getFullYear(), newMonth, 1));
+        goToMonth(new Date(props.displayMonth.getFullYear(), newMonth, 1));
     };
 
     const handleYearChange = (newYear: number) => {
-        if (!props.month) return;
-        goToMonth(new Date(newYear, props.month.getMonth(), 1));
+        goToMonth(new Date(newYear, props.displayMonth.getMonth(), 1));
     };
 
 
@@ -40,7 +38,7 @@ function CalendarCaption(props: React.ComponentProps<typeof DayPicker>) {
         <div className="flex justify-center pt-1 relative items-center">
             <div className="flex items-center gap-2">
                  <Select
-                    value={String(props.month?.getMonth())}
+                    value={String(props.displayMonth.getMonth())}
                     onValueChange={(value) => handleMonthChange(Number(value))}
                 >
                     <SelectTrigger className="w-auto focus:ring-0 focus:ring-offset-0 h-auto p-1 text-xs">
@@ -53,7 +51,7 @@ function CalendarCaption(props: React.ComponentProps<typeof DayPicker>) {
                     </SelectContent>
                 </Select>
                  <Select
-                    value={String(props.month?.getFullYear())}
+                    value={String(props.displayMonth.getFullYear())}
                     onValueChange={(value) => handleYearChange(Number(value))}
                 >
                     <SelectTrigger className="w-auto focus:ring-0 focus:ring-offset-0 h-auto p-1 text-xs">
@@ -104,6 +102,7 @@ function Calendar({
       classNames={{
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
+        caption: "flex justify-center pt-1 relative items-center",
         caption_label: "text-sm font-medium hidden",
         caption_dropdowns: "flex gap-2 items-center",
         nav: "space-x-1 flex items-center",
