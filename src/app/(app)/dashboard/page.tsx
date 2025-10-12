@@ -58,21 +58,6 @@ export default function DashboardPage() {
   const { data: transactions, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
   
   const loading = settingsLoading || membersLoading || txLoading;
-  
-  // This effect will run when members and settings data are loaded.
-  // It calculates the true total fund from member balances and corrects the settings document if there's a mismatch.
-  useEffect(() => {
-    if (!loading && members && settings && settingsRef) {
-      const calculatedTotalFund = members.reduce((acc, member) => acc + member.currentBalance, 0);
-      
-      // Compare with a small tolerance for floating point issues
-      if (Math.abs(calculatedTotalFund - settings.totalFund) > 0.01) {
-        console.log(`Correcting totalFund. Stored: ${settings.totalFund}, Calculated: ${calculatedTotalFund}`);
-        setDoc(settingsRef, { totalFund: calculatedTotalFund }, { merge: true })
-          .catch(error => console.error("Failed to correct totalFund:", error));
-      }
-    }
-  }, [loading, members, settings, settingsRef]);
 
   const totalDeposited = transactions ? transactions.filter(t => t.type === 'deposit').reduce((acc, t) => acc + t.amount, 0) : 0;
   const totalWithdrawn = transactions ? transactions.filter(t => t.type === 'withdrawal').reduce((acc, t) => acc + t.amount, 0) : 0;

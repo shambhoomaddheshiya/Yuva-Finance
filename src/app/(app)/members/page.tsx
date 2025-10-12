@@ -415,8 +415,7 @@ export default function MembersPage() {
 
         // 1. Delete member document
         const memberDocRef = doc(firestore, `users/${user.uid}/members`, memberId);
-        batch.delete(memberDocRef);
-
+        
         // 2. Find and delete all transactions for that member
         const transactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('memberId', '==', memberId));
         const transactionsSnapshot = await getDocs(transactionsQuery);
@@ -436,7 +435,8 @@ export default function MembersPage() {
                 totalFund: newTotalFund < 0 ? 0 : newTotalFund
             });
         }
-
+        
+        batch.delete(memberDocRef);
         await batch.commit();
 
         toast({
