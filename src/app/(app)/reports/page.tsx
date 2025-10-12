@@ -19,7 +19,7 @@ import { useToast } from '@/hooks/use-toast';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
+import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear, addMonths } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -52,6 +52,7 @@ export default function ReportsPage() {
     const { user } = useUser();
     const firestore = useFirestore();
     const [isLoading, setIsLoading] = useState(false);
+    const [month, setMonth] = useState<Date>(new Date());
     
     const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
     const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings`, 'settings') : null, [user, firestore]);
@@ -338,6 +339,8 @@ export default function ReportsPage() {
                                                     <Calendar
                                                         initialFocus
                                                         mode="range"
+                                                        month={month}
+                                                        onMonthChange={setMonth}
                                                         captionLayout="dropdown-buttons"
                                                         fromYear={getYear(new Date()) - 10}
                                                         toYear={getYear(new Date())}
@@ -420,4 +423,5 @@ export default function ReportsPage() {
             </Card>
         </div>
     );
-}
+
+    
