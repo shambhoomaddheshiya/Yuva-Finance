@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -19,7 +19,7 @@ import { useToast } from '@/hooks/use-toast';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { format, getYear, getMonth, startOfMonth, endOfMonth, startOfYear, endOfYear, addDays } from 'date-fns';
+import { format, getYear, getMonth, startOfMonth, endOfMonth, startOfYear, endOfYear, addDays, addMonths } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -52,6 +52,8 @@ export default function ReportsPage() {
     const { user } = useUser();
     const firestore = useFirestore();
     const [isLoading, setIsLoading] = useState(false);
+    const [toDateMonth, setToDateMonth] = useState<Date | undefined>(addMonths(new Date(), 1));
+
 
     const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
     const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings`, 'settings') : null, [user, firestore]);
@@ -70,6 +72,15 @@ export default function ReportsPage() {
     });
 
     const reportType = form.watch('reportType');
+    const dateRangeValue = form.watch('dateRange');
+
+    useEffect(() => {
+        if (!dateRangeValue?.from) {
+          setToDateMonth(addMonths(new Date(), 1));
+        } else {
+          setToDateMonth(addMonths(dateRangeValue.from, 1));
+        }
+    }, [dateRangeValue?.from]);
     
     const getTransactionDate = (tx: Transaction) => {
         if (tx.date instanceof Timestamp) {
@@ -338,6 +349,9 @@ export default function ReportsPage() {
                                                     <Calendar
                                                         initialFocus
                                                         mode="range"
+                                                        month={field.value?.from || new Date()}
+                                                        toMonth={toDateMonth}
+                                                        onMonthChange={setToDateMonth}
                                                         captionLayout="dropdown-buttons"
                                                         fromYear={getYear(new Date()) - 10}
                                                         toYear={getYear(new Date())}
