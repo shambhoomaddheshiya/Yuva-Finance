@@ -303,9 +303,6 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                     onSelect={field.onChange}
                     disabled={(date) => date > new Date() || date < new Date('1900-01-01')}
                     initialFocus
-                    captionLayout="dropdown-buttons"
-                    fromYear={getYear(new Date()) - 10}
-                    toYear={getYear(new Date())}
                   />
                 </PopoverContent>
               </Popover>
@@ -477,9 +474,6 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
                     onSelect={field.onChange}
                     disabled={(date) => date > new Date() || date < new Date('1900-01-01')}
                     initialFocus
-                    captionLayout="dropdown-buttons"
-                    fromYear={getYear(new Date()) - 10}
-                    toYear={getYear(new Date())}
                   />
                 </PopoverContent>
               </Popover>
