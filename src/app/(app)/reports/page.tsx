@@ -58,6 +58,8 @@ export default function ReportsPage() {
 
     const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
     const { data: settings, isLoading: settingsLoading } = useDoc<GroupSettings>(settingsRef);
+
+    const [month, setMonth] = useState<Date>(new Date());
     
 
     const form = useForm<z.infer<typeof reportSchema>>({
@@ -338,6 +340,8 @@ export default function ReportsPage() {
                                                     <Calendar
                                                         initialFocus
                                                         mode="range"
+                                                        month={month}
+                                                        onMonthChange={setMonth}
                                                         captionLayout="dropdown-buttons"
                                                         fromYear={getYear(new Date()) - 10}
                                                         toYear={getYear(new Date())}
