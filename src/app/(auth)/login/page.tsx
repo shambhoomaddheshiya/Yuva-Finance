@@ -64,6 +64,25 @@ export default function LoginPage() {
     },
   });
 
+  const ensureSettingsExist = async (user: UserCredential['user']) => {
+    if (!firestore) return;
+    const settingsRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
+    const settingsSnap = await getDoc(settingsRef);
+
+    if (!settingsSnap.exists()) {
+      const defaultSettings: GroupSettings = {
+        groupName: 'My Savings Group',
+        monthlyContribution: 1000,
+        interestRate: 2,
+        totalMembers: 0,
+        totalFund: 0,
+        establishedDate: new Date().toISOString(),
+      };
+      await setDoc(settingsRef, defaultSettings);
+    }
+  };
+
+
   async function onEmailSubmit(values: z.infer<typeof formSchema>) {
     if (!auth) return;
     setIsLoading(true);
@@ -81,14 +100,13 @@ export default function LoginPage() {
   }
 
   async function onGoogleSubmit() {
-    if (!auth) return;
+    if (!auth || !firestore) return;
     setIsGoogleLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      // The sign-in process will trigger the auth state listener in the layout
-      // which will handle the redirect. We don't need to do anything with the result here.
-      // We also assume that settings are created on sign-up, not sign-in.
-      await signInWithPopup(auth, provider);
+      const userCredential = await signInWithPopup(auth, provider);
+      // Ensure settings exist for the user, especially for first-time Google sign-in
+      await ensureSettingsExist(userCredential.user);
     } catch (error: any) {
       toast({
         variant: 'destructive',
@@ -171,3 +189,5 @@ export default function LoginPage() {
     </Card>
   );
 }
+
+    
