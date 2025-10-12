@@ -6,6 +6,7 @@ export type Member = {
   phone: string;
   aadhaar: string;
   joinDate: string;
+  status: 'active' | 'inactive';
   totalDeposited: number;
   totalWithdrawn: number;
   currentBalance: number;

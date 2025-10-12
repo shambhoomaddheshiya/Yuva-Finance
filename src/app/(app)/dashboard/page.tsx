@@ -61,7 +61,8 @@ export default function DashboardPage() {
   const totalDepositedThisPeriod = transactions ? transactions.filter(t => t.type === 'deposit').reduce((acc, t) => acc + t.amount, 0) : 0;
   const totalWithdrawnThisPeriod = transactions ? transactions.filter(t => t.type === 'withdrawal').reduce((acc, t) => acc + t.amount, 0) : 0;
   
-  const totalDepositedAllTime = members ? members.reduce((sum, member) => sum + member.totalDeposited, 0) : 0;
+  const totalDepositedAllTime = members ? members.filter(m => m.status === 'active').reduce((sum, member) => sum + member.totalDeposited, 0) : 0;
+  const activeMembersCount = members ? members.filter(m => m.status === 'active').length : 0;
 
   const chartData = [
     { name: 'Deposits', total: totalDepositedThisPeriod, fill: 'hsl(var(--primary))' },
@@ -85,7 +86,7 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Remaining Fund"
-          value={settings ? `₹${settings.totalFund.toLocaleString('en-IN')}` : '...'}
+          value={settings && typeof settings.totalFund === 'number' ? `₹${settings.totalFund.toLocaleString('en-IN')}` : '...'}
           icon={Banknote}
           loading={settingsLoading}
           description="Current cash balance"
@@ -95,14 +96,14 @@ export default function DashboardPage() {
           value={members ? `₹${totalDepositedAllTime.toLocaleString('en-IN')}` : '...'}
           icon={PiggyBank}
           loading={membersLoading}
-          description="All-time deposits"
+          description="From active members"
         />
         <StatCard
-          title="Total Members"
-          value={members ? members.length : '...'}
+          title="Active Members"
+          value={members ? activeMembersCount : '...'}
           icon={Users}
           loading={membersLoading}
-          description="Number of active members"
+          description={`${(members?.length || 0) - activeMembersCount} inactive`}
         />
         <StatCard
           title="Interest Rate"

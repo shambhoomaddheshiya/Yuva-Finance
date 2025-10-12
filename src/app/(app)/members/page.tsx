@@ -5,9 +5,9 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search } from 'lucide-react';
+import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX } from 'lucide-react';
 import { format, getYear } from 'date-fns';
-import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -65,6 +65,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 const memberSchema = z.object({
   id: z.string().min(1, 'Member ID cannot be empty.'),
@@ -146,6 +147,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
             const newMember: Member = {
                 id: values.id, name: values.name, phone: values.phone, aadhaar: aadhaarUnformatted,
                 joinDate: values.joinDate.toISOString(),
+                status: 'active', // New members are active by default
                 totalDeposited: 0, totalWithdrawn: 0, currentBalance: 0, interestEarned: 0,
             };
             const newMemberRef = doc(firestore, `users/${user.uid}/members`, values.id);
@@ -374,6 +376,7 @@ export default function MembersPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | undefined>(undefined);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredMembers = useMemo(() => {
@@ -404,6 +407,45 @@ export default function MembersPage() {
     setSelectedMember(member);
     setIsDeleteDialogOpen(true);
   }
+  
+  const handleStatusChange = async (member: Member, newStatus: 'active' | 'inactive') => {
+    if (!user || !firestore) return;
+    setIsUpdatingStatus(true);
+    
+    const memberDocRef = doc(firestore, `users/${user.uid}/members`, member.id);
+    const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
+
+    try {
+        const batch = writeBatch(firestore);
+        
+        batch.update(memberDocRef, { status: newStatus });
+        
+        const settingsSnap = await getDoc(settingsDocRef);
+        if(settingsSnap.exists()){
+            const settingsData = settingsSnap.data() as GroupSettings;
+            const fundChange = newStatus === 'active' ? member.currentBalance : -member.currentBalance;
+            const newTotalFund = (settingsData.totalFund || 0) + fundChange;
+            batch.update(settingsDocRef, { totalFund: newTotalFund });
+        }
+
+        await batch.commit();
+
+        toast({
+            title: 'Status Updated',
+            description: `${member.name} is now ${newStatus}.`,
+        });
+
+    } catch (error: any) {
+         toast({
+            variant: 'destructive',
+            title: 'Update Failed',
+            description: error.message || 'There was a problem updating the member status.',
+        });
+    } finally {
+        setIsUpdatingStatus(false);
+    }
+  }
+
 
   const handleDeleteConfirm = async () => {
     if (!selectedMember || !user || !firestore) return;
@@ -428,7 +470,12 @@ export default function MembersPage() {
         if (settingsSnap.exists()) {
             const settingsData = settingsSnap.data() as GroupSettings;
             const newTotalMembers = (settingsData.totalMembers || 0) > 0 ? settingsData.totalMembers - 1 : 0;
-            const newTotalFund = (settingsData.totalFund || 0) - selectedMember.currentBalance;
+            
+            // Only adjust fund if the member was active
+            const newTotalFund = selectedMember.status === 'active' 
+                ? (settingsData.totalFund || 0) - selectedMember.currentBalance
+                : settingsData.totalFund;
+
             batch.update(settingsDocRef, { 
                 totalMembers: newTotalMembers,
                 totalFund: newTotalFund < 0 ? 0 : newTotalFund
@@ -520,14 +567,21 @@ export default function MembersPage() {
                 ))
               ) : filteredMembers && filteredMembers.length > 0 ? (
                 filteredMembers.map((member, index) => (
-                  <TableRow key={member.id}>
+                  <TableRow key={member.id} className={cn(member.status === 'inactive' && 'bg-muted/50 text-muted-foreground')}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-3">
                          <Avatar>
                           <AvatarImage src={PlaceHolderImages[index % PlaceHolderImages.length]?.imageUrl} data-ai-hint="person portrait" />
                           <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
                         </Avatar>
-                        {member.name}
+                        <div className='flex flex-col'>
+                            <span>{member.name}</span>
+                            {member.status === 'active' ? (
+                                <Badge variant="secondary" className='w-fit bg-green-100 text-green-800'>Active</Badge>
+                            ) : (
+                                <Badge variant="secondary" className='w-fit bg-red-100 text-red-800'>Inactive</Badge>
+                            )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>{member.id}</TableCell>
@@ -538,9 +592,9 @@ export default function MembersPage() {
                      <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
+                          <Button variant="ghost" className="h-8 w-8 p-0" disabled={isUpdatingStatus}>
+                            {isUpdatingStatus && selectedMember?.id === member.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
                             <span className="sr-only">Open menu</span>
-                            <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
@@ -552,6 +606,18 @@ export default function MembersPage() {
                             <BookUser className="mr-2 h-4 w-4" />
                             <span>Passbook</span>
                           </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          {member.status === 'active' ? (
+                            <DropdownMenuItem onClick={() => handleStatusChange(member, 'inactive')}>
+                                <UserX className="mr-2 h-4 w-4" />
+                                <span>Deactivate</span>
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onClick={() => handleStatusChange(member, 'active')}>
+                                <UserCheck className="mr-2 h-4 w-4" />
+                                <span>Activate</span>
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => handleDelete(member)} className="text-destructive focus:bg-destructive/10 focus:text-destructive">
                             <Trash2 className="mr-2 h-4 w-4" />
