@@ -5,11 +5,11 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Loader2 } from 'lucide-react';
-import { doc, setDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useToast } from '@/hooks/use-toast';
-import type { GroupSettings, Member } from '@/types';
+import type { GroupSettings } from '@/types';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 
 import { Button } from '@/components/ui/button';
@@ -46,45 +46,40 @@ export default function SettingsPage() {
   });
 
   useEffect(() => {
-    // This effect handles two scenarios after initial loading is complete:
-    // 1. Populating the form if settings exist.
-    // 2. Creating default settings if they are missing for a logged-in user.
-    
-    // Wait until both user auth and data fetching are complete.
     if (isInitializing) {
       return;
     }
 
     if (user && firestore) {
       if (settings) {
-        // Scenario 1: Settings exist, so populate the form.
         form.reset({
           groupName: settings.groupName,
           monthlyContribution: settings.monthlyContribution,
           interestRate: settings.interestRate,
         });
       } else if (settingsRef) {
-        // Scenario 2: User is logged in but has no settings document. Create it.
         const createDefaultSettings = async () => {
           console.log(`Creating default settings for user ${user.uid}...`);
           
           try {
-            const membersQuery = collection(firestore, `users/${user.uid}/members`);
-            const membersSnapshot = await getDocs(membersQuery);
-            const members = membersSnapshot.docs.map(doc => doc.data() as Member);
-            const totalFundFromMembers = members.reduce((acc, member) => acc + member.currentBalance, 0);
+            // Check one more time if doc exists before writing to prevent race conditions
+            const docSnap = await getDoc(settingsRef);
+            if (docSnap.exists()) {
+              console.log("Settings already exist, aborting creation.");
+              return;
+            }
 
             const newSettings: GroupSettings = {
               groupName: 'My Savings Group',
               monthlyContribution: 1000,
               interestRate: 2,
-              totalMembers: members.length,
-              totalFund: totalFundFromMembers,
+              totalMembers: 0, // Start with 0 members
+              totalFund: 0,    // Start with 0 fund
               establishedDate: new Date().toISOString(),
             };
 
             await setDoc(settingsRef, newSettings);
-            form.reset(newSettings); // Populate form with the newly created settings.
+            form.reset(newSettings); 
             toast({
               title: 'Settings Initialized',
               description: 'Default group settings have been created for you.',
@@ -109,8 +104,6 @@ export default function SettingsPage() {
     if (!user || !firestore || !settingsRef) return;
     setIsSubmitting(true);
     try {
-      // Use the existing settings as a base to avoid overwriting fields
-      // like totalFund, totalMembers, and establishedDate.
       const updatedSettings: Partial<GroupSettings> = {
         groupName: values.groupName,
         monthlyContribution: values.monthlyContribution,
