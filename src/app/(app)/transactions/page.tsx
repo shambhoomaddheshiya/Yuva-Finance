@@ -82,7 +82,7 @@ const transactionSchema = z.object({
   }),
   amount: z.coerce.number().positive('Amount must be a positive number.'),
   date: z.date({ required_error: 'A date is required.' }),
-  description: z.string().min(3, 'Description must be at least 3 characters.'),
+  description: z.string().optional(),
 });
 
 // For the edit form
@@ -555,7 +555,7 @@ export default function TransactionsPage() {
       
       return (
         memberName.includes(lowercasedQuery) ||
-        tx.description.toLowerCase().includes(lowercasedQuery)
+        (tx.description && tx.description.toLowerCase().includes(lowercasedQuery))
       );
     });
   }, [transactions, members, searchQuery, filter, selectedYear, selectedMonth, dateRange]);

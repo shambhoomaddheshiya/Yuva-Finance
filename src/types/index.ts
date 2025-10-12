@@ -18,7 +18,7 @@ export type Transaction = {
   type: 'deposit' | 'withdrawal';
   amount: number;
   date: Timestamp | string; // Support for both old string and new Timestamp dates
-  description: string;
+  description?: string;
   balance: number;
 };
 
