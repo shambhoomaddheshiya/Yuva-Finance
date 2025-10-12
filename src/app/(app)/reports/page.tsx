@@ -68,6 +68,14 @@ export default function ReportsPage() {
     });
 
     const reportType = form.watch('reportType');
+    
+    const getTransactionDate = (tx: Transaction) => {
+        if (tx.date instanceof Timestamp) {
+            return tx.date.toDate();
+        }
+        // Fallback for string dates, assuming UTC if no timezone is present
+        return new Date(tx.date + 'T00:00:00Z');
+    };
 
     const generateReport = async (values: z.infer<typeof reportSchema>) => {
         if (!user || !firestore || !members || !settings) return;
@@ -106,8 +114,8 @@ export default function ReportsPage() {
 
             const transactionsQuery = query(
                 collection(firestore, `users/${user.uid}/transactions`),
-                where('date', '>=', format(startDate, 'yyyy-MM-dd')),
-                where('date', '<=', format(endDate, 'yyyy-MM-dd'))
+                where('date', '>=', Timestamp.fromDate(startDate)),
+                where('date', '<=', Timestamp.fromDate(endDate))
             );
 
             const querySnapshot = await getDocs(transactionsQuery);
@@ -139,7 +147,7 @@ export default function ReportsPage() {
 
             const dataForExport = transactions.map(tx => ({
                 'Member Name': members.find(m => m.id === tx.memberId)?.name || 'Unknown',
-                'Date': tx.date,
+                'Date': format(getTransactionDate(tx), 'yyyy-MM-dd'),
                 'Type': tx.type,
                 'Description': tx.description,
                 'Amount': tx.amount.toFixed(2),

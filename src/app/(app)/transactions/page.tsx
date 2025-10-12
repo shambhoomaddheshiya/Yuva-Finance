@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-import { collection, doc, getDoc, query, writeBatch, where, getDocs, orderBy, deleteDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, query, writeBatch, where, getDocs, orderBy, deleteDoc, Timestamp } from 'firebase/firestore';
 import { format, getYear } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -144,11 +144,11 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         const allMemberTxsSnap = await getDocs(allMemberTxsQuery);
         const allMemberTxs = allMemberTxsSnap.docs.map(d => ({...d.data(), id: d.id } as Transaction));
         
-        const newTxDate = format(values.date, 'yyyy-MM-dd');
+        const newTxTimestamp = Timestamp.fromDate(values.date);
 
         // Find the transaction just before the new one to get the starting balance
         let lastBalance = 0;
-        const previousTxIndex = allMemberTxs.map(t => t.date <= newTxDate).lastIndexOf(true);
+        const previousTxIndex = allMemberTxs.map(t => (t.date as Timestamp).toDate() <= newTxTimestamp.toDate()).lastIndexOf(true);
         if(previousTxIndex !== -1) {
             lastBalance = allMemberTxs[previousTxIndex].balance;
         }
@@ -167,15 +167,15 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         const txsRef = collection(firestore, `users/${user.uid}/transactions`);
         const newTxRef = doc(txsRef); 
 
-        const newTransaction: Transaction = {
-            id: newTxRef.id, memberId: values.memberId, type: values.type,
-            amount: values.amount, date: newTxDate, description: values.description,
+        const newTransaction: Omit<Transaction, 'id'> = {
+            memberId: values.memberId, type: values.type,
+            amount: values.amount, date: newTxTimestamp, description: values.description,
             balance: newBalance,
         };
         batch.set(newTxRef, newTransaction);
         
         // Update all subsequent transaction balances
-        const subsequentTxs = allMemberTxs.filter(t => t.date > newTxDate || (t.date === newTxDate && t.id > newTransaction.id));
+        const subsequentTxs = allMemberTxs.filter(t => (t.date as Timestamp).toMillis() > newTxTimestamp.toMillis());
         let runningBalance = newBalance;
         for (const tx of subsequentTxs) {
             const txRef = doc(firestore, `users/${user.uid}/transactions`, tx.id);
@@ -340,11 +340,20 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
   const { user } = useUser();
   const firestore = useFirestore();
 
+  const getDateFromTransaction = (tx: Transaction) => {
+    if (tx.date instanceof Timestamp) {
+      return tx.date.toDate();
+    }
+    // Fallback for string dates with timezone adjustment
+    return new Date(tx.date + "T00:00:00");
+  }
+
+
   const form = useForm<z.infer<typeof editTransactionSchema>>({
     resolver: zodResolver(editTransactionSchema),
     defaultValues: {
       amount: transaction.amount,
-      date: new Date(transaction.date + "T00:00:00"), // Ensure date is parsed correctly
+      date: getDateFromTransaction(transaction),
       description: transaction.description,
     },
   });
@@ -375,7 +384,7 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
         // Update the current transaction
         const updatedTxData = {
             amount: values.amount,
-            date: format(values.date, 'yyyy-MM-dd'),
+            date: Timestamp.fromDate(values.date),
             description: values.description,
         };
         batch.update(txRef, updatedTxData);
@@ -537,15 +546,23 @@ export default function TransactionsPage() {
       value: String(i),
       label: format(new Date(0, i), 'MMMM'),
   }));
+  
+  const getTransactionDate = (tx: Transaction) => {
+    if (tx.date instanceof Timestamp) {
+        return tx.date.toDate();
+    }
+    // Fallback for string dates, assuming UTC if no timezone is present
+    return new Date(tx.date + 'T00:00:00Z');
+  };
 
   const filteredTransactions = useMemo(() => {
     if (!transactions || !members) return [];
     
-    let intermediateList = [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    let intermediateList = [...transactions].sort((a, b) => getTransactionDate(b).getTime() - getTransactionDate(a).getTime());
 
     // Date and Type Filtering
     intermediateList = intermediateList.filter(tx => {
-        const txDate = new Date(`${tx.date}T00:00:00`);
+        const txDate = getTransactionDate(tx);
         const txYear = getYear(txDate);
         const txMonth = txDate.getMonth();
 
@@ -798,7 +815,7 @@ export default function TransactionsPage() {
                         {tx.type}
                       </div>
                     </TableCell>
-                    <TableCell>{new Date(`${tx.date}T00:00:00`).toLocaleDateString()}</TableCell>
+                    <TableCell>{getTransactionDate(tx).toLocaleDateString()}</TableCell>
                     <TableCell>{tx.description}</TableCell>
                     <TableCell className={`text-right font-mono font-semibold ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
                       {tx.type === 'deposit' ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}

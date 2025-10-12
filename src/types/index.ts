@@ -1,3 +1,5 @@
+import { Timestamp } from 'firebase/firestore';
+
 export type Member = {
   id: string;
   name: string;
@@ -15,7 +17,7 @@ export type Transaction = {
   memberId: string;
   type: 'deposit' | 'withdrawal';
   amount: number;
-  date: string;
+  date: Timestamp | string; // Support for both old string and new Timestamp dates
   description: string;
   balance: number;
 };
