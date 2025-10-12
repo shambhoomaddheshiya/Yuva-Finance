@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -128,9 +129,9 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         if (!memberSnapshot.exists()) throw new Error('Selected member not found.');
         const memberData = memberSnapshot.data() as Member;
         
-        let settingsSnapshot = await getDoc(settingsDocRef);
+        const settingsSnapshot = await getDoc(settingsDocRef);
         if (!settingsSnapshot.exists()) throw new Error("Group settings not found.");
-        let settingsData = settingsSnapshot.data() as GroupSettings;
+        const settingsData = settingsSnapshot.data() as GroupSettings;
         
         const amountChange = values.type === 'deposit' ? values.amount : -values.amount;
 
@@ -320,7 +321,7 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
       return tx.date.toDate();
     }
     // Fallback for string dates with timezone adjustment
-    return new Date(tx.date + "T00:00:00");
+    return new Date(tx.date as string);
   }
 
 
@@ -368,12 +369,11 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
 
 
         // 1. Update the transaction itself
-        // The balance stored with the transaction must be updated to reflect the member's new total balance
         batch.update(txRef, {
             amount: values.amount,
             date: Timestamp.fromDate(values.date),
             description: values.description,
-            balance: newMemberBalance, // This is a key change to keep transaction log consistent
+            balance: newMemberBalance,
         });
 
         // 2. Update member's totals
@@ -512,8 +512,7 @@ export default function TransactionsPage() {
     if (tx.date instanceof Timestamp) {
         return tx.date.toDate();
     }
-    // Fallback for string dates, assuming UTC if no timezone is present
-    return new Date(tx.date + 'T00:00:00Z');
+    return new Date(tx.date as string);
   };
 
   const filteredTransactions = useMemo(() => {

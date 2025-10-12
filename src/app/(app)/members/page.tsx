@@ -8,7 +8,7 @@ import * as z from 'zod';
 import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search } from 'lucide-react';
 import { format, getYear } from 'date-fns';
 import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc } from 'firebase/firestore';
-import { useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
+import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
@@ -65,7 +65,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { cn } from '@/lib/utils';
-import { addDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 const memberSchema = z.object({
   id: z.string().min(1, 'Member ID cannot be empty.'),
@@ -304,7 +303,7 @@ function PassbookView({ member }: { member: Member }) {
     const { data: transactions, isLoading } = useCollection<Transaction>(transactionsRef);
   
     const sortedTransactions = useMemo(() => {
-        return transactions ? [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
+        return transactions ? [...transactions].sort((a, b) => new Date(b.date as string).getTime() - new Date(a.date as string).getTime()) : [];
     }, [transactions]);
 
     return (
@@ -338,7 +337,7 @@ function PassbookView({ member }: { member: Member }) {
                             <TableBody>
                                 {sortedTransactions.map(tx => (
                                     <TableRow key={tx.id}>
-                                        <TableCell>{new Date(tx.date).toLocaleDateString()}</TableCell>
+                                        <TableCell>{new Date(tx.date as string).toLocaleDateString()}</TableCell>
                                         <TableCell className='capitalize'>
                                             <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${tx.type === 'deposit' ? 'border-transparent bg-green-100 text-green-800' : 'border-transparent bg-red-100 text-red-800'}`}>
                                                 {tx.type === 'deposit' ? <ArrowUp className="mr-1 h-3 w-3" /> : <ArrowDown className="mr-1 h-3 w-3" />}
