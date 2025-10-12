@@ -1,8 +1,8 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { collection, getDocs, query, where, Timestamp, doc } from 'firebase/firestore';
@@ -19,7 +19,7 @@ import { useToast } from '@/hooks/use-toast';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { format, getYear, getMonth, startOfMonth, endOfMonth, startOfYear, endOfYear, addDays, addMonths } from 'date-fns';
+import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -52,7 +52,6 @@ export default function ReportsPage() {
     const { user } = useUser();
     const firestore = useFirestore();
     const [isLoading, setIsLoading] = useState(false);
-    const [fromMonth, setFromMonth] = useState<Date>(new Date());
     
     const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
     const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings`, 'settings') : null, [user, firestore]);
@@ -339,8 +338,6 @@ export default function ReportsPage() {
                                                     <Calendar
                                                         initialFocus
                                                         mode="range"
-                                                        month={fromMonth}
-                                                        onMonthChange={setFromMonth}
                                                         captionLayout="dropdown-buttons"
                                                         fromYear={getYear(new Date()) - 10}
                                                         toYear={getYear(new Date())}
@@ -424,5 +421,3 @@ export default function ReportsPage() {
         </div>
     );
 }
-
-    
