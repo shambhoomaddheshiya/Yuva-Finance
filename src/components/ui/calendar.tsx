@@ -61,7 +61,7 @@ function Calendar({
       }}
       captionLayout="dropdown-buttons"
       fromYear={new Date().getFullYear() - 10}
-      toYear={new Date().getFullYear()}
+      toYear={new Date().getFullYear() + 10}
       {...props}
     />
   )
@@ -69,3 +69,5 @@ function Calendar({
 Calendar.displayName = "Calendar"
 
 export { Calendar }
+
+    

@@ -19,15 +19,13 @@ import { useToast } from '@/hooks/use-toast';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear, addMonths } from 'date-fns';
-import { Calendar as CalendarIcon } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { cn } from '@/lib/utils';
+import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 import { DateRange } from 'react-day-picker';
+import { DateRangePicker } from '@/components/date-range-picker';
+
 
 const reportSchema = z.object({
-  reportType: z.enum(['monthly', 'yearly', 'custom']),
+  reportType: z.enum(['monthly', 'yearly', 'custom', 'all']),
   year: z.string().optional(),
   month: z.string().optional(),
   dateRange: z.custom<DateRange>(value => value instanceof Object && 'from' in value, 'Please select a valid date range.').optional(),
@@ -37,7 +35,7 @@ const reportSchema = z.object({
     if (data.reportType === 'monthly') return !!data.year && !!data.month;
     if (data.reportType === 'yearly') return !!data.year;
     if (data.reportType === 'custom') return !!data.dateRange && !!data.dateRange.from && !!data.dateRange.to;
-    return true; // Allow report generation if no specific validation fails
+    return true; 
 }, {
     message: 'Please complete all required fields for the selected report type.',
     path: ['reportType'],
@@ -49,7 +47,6 @@ export default function ReportsPage() {
     const { user } = useUser();
     const firestore = useFirestore();
     const [isLoading, setIsLoading] = useState(false);
-    const [displayMonth, setDisplayMonth] = useState<Date>(new Date());
     
     const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
     const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings`, 'settings') : null, [user, firestore]);
@@ -61,7 +58,7 @@ export default function ReportsPage() {
     const form = useForm<z.infer<typeof reportSchema>>({
         resolver: zodResolver(reportSchema),
         defaultValues: {
-            reportType: 'monthly',
+            reportType: 'all',
             transactionType: 'all',
             format: 'pdf',
         },
@@ -73,7 +70,6 @@ export default function ReportsPage() {
         if (tx.date instanceof Timestamp) {
             return tx.date.toDate();
         }
-        // Fallback for string dates, assuming UTC if no timezone is present
         return new Date(tx.date as string);
     };
 
@@ -84,9 +80,9 @@ export default function ReportsPage() {
 
         try {
             const { reportType, year, month, dateRange, transactionType, format: fileFormat } = values;
-            let startDate: Date;
-            let endDate: Date;
-            let reportTitle: string;
+            let startDate: Date | null = null;
+            let endDate: Date | null = null;
+            let reportTitle: string = 'All Transactions Report';
 
             if (reportType === 'monthly' && month && year) {
                 const selectedYear = parseInt(year);
@@ -103,7 +99,7 @@ export default function ReportsPage() {
                 startDate = dateRange.from;
                 endDate = dateRange.to;
                 reportTitle = `Custom Report: ${format(startDate, 'LLL dd, y')} - ${format(endDate, 'LLL dd, y')}`;
-            } else {
+            } else if (reportType !== 'all') {
                  toast({
                     variant: 'destructive',
                     title: 'Invalid Selection',
@@ -113,16 +109,21 @@ export default function ReportsPage() {
                 return;
             }
 
-            const transactionsQuery = query(
-                collection(firestore, `users/${user.uid}/transactions`),
-                where('date', '>=', Timestamp.fromDate(startDate)),
-                where('date', '<=', Timestamp.fromDate(endDate))
-            );
+            let transactionsQuery;
+            if (startDate && endDate) {
+                transactionsQuery = query(
+                    collection(firestore, `users/${user.uid}/transactions`),
+                    where('date', '>=', Timestamp.fromDate(startDate)),
+                    where('date', '<=', Timestamp.fromDate(endDate))
+                );
+            } else {
+                transactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`));
+            }
+
 
             const querySnapshot = await getDocs(transactionsQuery);
             let transactions = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction));
             
-            // Filter by transaction type if not 'all'
             if (transactionType !== 'all') {
                 transactions = transactions.filter(tx => tx.type === transactionType);
             }
@@ -136,7 +137,6 @@ export default function ReportsPage() {
                 return;
             }
 
-            // Calculate summary based on the filtered transactions for the period
             const totalDepositsForPeriod = transactions.filter(tx => tx.type === 'deposit').reduce((sum, tx) => sum + tx.amount, 0);
             const totalWithdrawalsForPeriod = transactions.filter(tx => tx.type === 'withdrawal').reduce((sum, tx) => sum + tx.amount, 0);
             const netChange = totalDepositsForPeriod - totalWithdrawalsForPeriod;
@@ -167,7 +167,6 @@ export default function ReportsPage() {
                 doc.setFontSize(10);
                 doc.text(`Transaction Type: ${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}`, 14, 22);
 
-                // Add summary table
                 autoTable(doc, {
                     body: Object.entries(summary),
                     startY: 28,
@@ -177,7 +176,6 @@ export default function ReportsPage() {
                     headStyles: { fillColor: [34, 139, 34] },
                 });
                 
-                // Add main data table
                 autoTable(doc, {
                     head: [['Member Name', 'Date', 'Type', 'Description', 'Amount']],
                     body: dataForExport.map(Object.values),
@@ -243,6 +241,10 @@ export default function ReportsPage() {
                                                 className="flex flex-col space-y-1"
                                             >
                                                 <FormItem className="flex items-center space-x-3 space-y-0">
+                                                    <FormControl><RadioGroupItem value="all" /></FormControl>
+                                                    <FormLabel className="font-normal">All Time</FormLabel>
+                                                </FormItem>
+                                                <FormItem className="flex items-center space-x-3 space-y-0">
                                                     <FormControl><RadioGroupItem value="monthly" /></FormControl>
                                                     <FormLabel className="font-normal">Monthly</FormLabel>
                                                 </FormItem>
@@ -307,44 +309,10 @@ export default function ReportsPage() {
                                     render={({ field }) => (
                                     <FormItem className="flex flex-col">
                                         <FormLabel>Date range</FormLabel>
-                                        <Popover>
-                                        <PopoverTrigger asChild>
-                                            <FormControl>
-                                            <Button
-                                                variant={'outline'}
-                                                className={cn(
-                                                'w-[300px] justify-start text-left font-normal',
-                                                !field.value && 'text-muted-foreground'
-                                                )}
-                                            >
-                                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                                {field.value?.from ? (
-                                                field.value.to ? (
-                                                    <>
-                                                    {format(field.value.from, 'LLL dd, y')} -{' '}
-                                                    {format(field.value.to, 'LLL dd, y')}
-                                                    </>
-                                                ) : (
-                                                    format(field.value.from, 'LLL dd, y')
-                                                )
-                                                ) : (
-                                                <span>Pick a date</span>
-                                                )}
-                                            </Button>
-                                            </FormControl>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0" align="start">
-                                            <Calendar
-                                                initialFocus
-                                                mode="range"
-                                                month={displayMonth}
-                                                onMonthChange={setDisplayMonth}
-                                                selected={field.value}
-                                                onSelect={field.onChange}
-                                                numberOfMonths={2}
-                                            />
-                                        </PopoverContent>
-                                        </Popover>
+                                        <DateRangePicker
+                                            value={field.value}
+                                            onChange={field.onChange}
+                                        />
                                         <FormMessage />
                                     </FormItem>
                                     )}
@@ -419,3 +387,5 @@ export default function ReportsPage() {
         </div>
     );
 }
+
+    
