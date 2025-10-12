@@ -85,7 +85,7 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Remaining Fund"
-          value={settings && typeof settings.totalFund === 'number' ? `₹${settings.totalFund.toLocaleString('en-IN')}` : '...'}
+          value={settings ? `₹${settings.totalFund.toLocaleString('en-IN')}` : '...'}
           icon={Banknote}
           loading={settingsLoading}
           description="Current cash balance"
@@ -106,7 +106,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Interest Rate"
-          value={settings && typeof settings.interestRate === 'number' ? `${settings.interestRate}%` : '...'}
+          value={settings ? `${settings.interestRate}%` : '...'}
           icon={Percent}
           loading={settingsLoading}
           description="Annual interest rate"
