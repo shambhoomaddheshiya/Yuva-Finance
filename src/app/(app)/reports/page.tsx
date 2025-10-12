@@ -140,8 +140,8 @@ export default function ReportsPage() {
             const totalRemainingFund = settings.totalFund;
             
              const summary = {
-                'Total Deposited (All Time)': `Rs. ${totalDepositedAllTime.toLocaleString('en-IN')}`,
-                'Total Remaining Fund': `Rs. ${totalRemainingFund.toLocaleString('en-IN')}`,
+                'Total Amount Deposited (All Time)': `Rs. ${totalDepositedAllTime.toLocaleString('en-IN')}`,
+                'Total Remaining Fund (Current Balance)': `Rs. ${totalRemainingFund.toLocaleString('en-IN')}`,
                 'Deposits in Period': `Rs. ${totalDepositsForPeriod.toLocaleString('en-IN')}`,
                 'Withdrawals in Period': `Rs. ${totalWithdrawalsForPeriod.toLocaleString('en-IN')}`,
                 'Net Change in Period': `Rs. ${netChange.toLocaleString('en-IN')}`,
@@ -379,5 +379,3 @@ export default function ReportsPage() {
         </div>
     );
 }
-
-    
