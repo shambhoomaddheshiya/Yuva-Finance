@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-import { collection, doc, getDoc, query, writeBatch, where, getDocs, orderBy, deleteDoc, Timestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, query, writeBatch, where, getDocs, deleteDoc, Timestamp } from 'firebase/firestore';
 import { format, getYear } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -320,7 +320,7 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
     if (tx.date instanceof Timestamp) {
       return tx.date.toDate();
     }
-    // Fallback for string dates with timezone adjustment
+    // Fallback for string dates, assuming UTC to avoid timezone shifts on conversion
     return new Date(tx.date as string);
   }
 
@@ -330,7 +330,7 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
     defaultValues: {
       amount: transaction.amount,
       date: getDateFromTransaction(transaction),
-      description: transaction.description,
+      description: transaction.description || '',
     },
   });
 
@@ -352,28 +352,35 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
         if (!settingsSnap.exists()) throw new Error("Settings not found.");
         const settingsData = settingsSnap.data() as GroupSettings;
 
-        const oldAmountChange = transaction.type === 'deposit' ? transaction.amount : -transaction.amount;
-        const newAmountChange = transaction.type === 'deposit' ? values.amount : -values.amount;
-        const amountDifference = newAmountChange - oldAmountChange;
+        const oldAmount = transaction.amount;
+        const newAmount = values.amount;
+        const amountDifference = newAmount - oldAmount;
+        
+        // This is the net change for the balance based on transaction type
+        const balanceChange = transaction.type === 'deposit' ? amountDifference : -amountDifference;
 
-        // This check is the most critical part for ensuring data integrity.
-        if (memberData.currentBalance + amountDifference < 0) {
+        if (memberData.currentBalance + balanceChange < 0) {
             throw new Error("Updating this transaction would result in a negative balance for the member.");
         }
         
         // Calculate new totals for member and group
-        const newMemberBalance = memberData.currentBalance + amountDifference;
-        const newTotalFund = settingsData.totalFund + amountDifference;
-        const newTotalDeposited = memberData.totalDeposited - (transaction.type === 'deposit' ? transaction.amount : 0) + (transaction.type === 'deposit' ? values.amount : 0);
-        const newTotalWithdrawn = memberData.totalWithdrawn - (transaction.type === 'withdrawal' ? transaction.amount : 0) + (transaction.type === 'withdrawal' ? values.amount : 0);
+        const newMemberBalance = memberData.currentBalance + balanceChange;
+        const newTotalFund = settingsData.totalFund + balanceChange;
+        let newTotalDeposited = memberData.totalDeposited;
+        let newTotalWithdrawn = memberData.totalWithdrawn;
+
+        if (transaction.type === 'deposit') {
+          newTotalDeposited = memberData.totalDeposited - oldAmount + newAmount;
+        } else { // withdrawal
+          newTotalWithdrawn = memberData.totalWithdrawn - oldAmount + newAmount;
+        }
 
 
         // 1. Update the transaction itself
         batch.update(txRef, {
             amount: values.amount,
             date: Timestamp.fromDate(values.date),
-            description: values.description,
-            balance: newMemberBalance,
+            description: values.description || '',
         });
 
         // 2. Update member's totals
@@ -589,20 +596,24 @@ export default function TransactionsPage() {
         
         // 2. Update member's current balance, and totals
         const memberSnap = await getDoc(memberRef);
-        const memberData = memberSnap.data() as Member;
-        const newTotalDeposited = memberData.totalDeposited - (selectedTransaction.type === 'deposit' ? selectedTransaction.amount : 0);
-        const newTotalWithdrawn = memberData.totalWithdrawn - (selectedTransaction.type === 'withdrawal' ? selectedTransaction.amount : 0);
+        if(memberSnap.exists()){
+            const memberData = memberSnap.data() as Member;
+            const newTotalDeposited = memberData.totalDeposited - (selectedTransaction.type === 'deposit' ? selectedTransaction.amount : 0);
+            const newTotalWithdrawn = memberData.totalWithdrawn - (selectedTransaction.type === 'withdrawal' ? selectedTransaction.amount : 0);
 
-        batch.update(memberRef, { 
-            currentBalance: memberData.currentBalance + amountChange,
-            totalDeposited: newTotalDeposited,
-            totalWithdrawn: newTotalWithdrawn,
-        });
+            batch.update(memberRef, { 
+                currentBalance: memberData.currentBalance + amountChange,
+                totalDeposited: newTotalDeposited,
+                totalWithdrawn: newTotalWithdrawn,
+            });
+        }
 
         // 3. Update group total fund
         const settingsSnap = await getDoc(settingsRef);
-        const settingsData = settingsSnap.data() as GroupSettings;
-        batch.update(settingsRef, { totalFund: settingsData.totalFund + amountChange });
+        if(settingsSnap.exists()){
+            const settingsData = settingsSnap.data() as GroupSettings;
+            batch.update(settingsRef, { totalFund: settingsData.totalFund + amountChange });
+        }
 
         await batch.commit();
         
@@ -839,3 +850,5 @@ export default function TransactionsPage() {
     </div>
   );
 }
+
+    
