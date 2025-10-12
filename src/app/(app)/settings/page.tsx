@@ -5,11 +5,11 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Loader2 } from 'lucide-react';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, collection, getDocs } from 'firebase/firestore';
 
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useToast } from '@/hooks/use-toast';
-import type { GroupSettings } from '@/types';
+import type { GroupSettings, Member } from '@/types';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 
 import { Button } from '@/components/ui/button';
@@ -67,16 +67,22 @@ export default function SettingsPage() {
         // Scenario 2: User is logged in but has no settings document. Create it.
         const createDefaultSettings = async () => {
           console.log(`Creating default settings for user ${user.uid}...`);
-          const newSettings: GroupSettings = {
-            groupName: 'My Savings Group',
-            monthlyContribution: 1000,
-            interestRate: 2,
-            totalMembers: 0,
-            totalFund: 0,
-            establishedDate: new Date().toISOString(),
-          };
           
           try {
+            const membersQuery = collection(firestore, `users/${user.uid}/members`);
+            const membersSnapshot = await getDocs(membersQuery);
+            const members = membersSnapshot.docs.map(doc => doc.data() as Member);
+            const totalFundFromMembers = members.reduce((acc, member) => acc + member.currentBalance, 0);
+
+            const newSettings: GroupSettings = {
+              groupName: 'My Savings Group',
+              monthlyContribution: 1000,
+              interestRate: 2,
+              totalMembers: members.length,
+              totalFund: totalFundFromMembers,
+              establishedDate: new Date().toISOString(),
+            };
+
             await setDoc(settingsRef, newSettings);
             form.reset(newSettings); // Populate form with the newly created settings.
             toast({
