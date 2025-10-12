@@ -139,8 +139,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         const allMemberTxsQuery = query(
             collection(firestore, `users/${user.uid}/transactions`),
             where('memberId', '==', values.memberId),
-            orderBy('date', 'asc'),
-            orderBy('id', 'asc')
+            orderBy('date', 'asc')
         );
         const allMemberTxsSnap = await getDocs(allMemberTxsQuery);
         const allMemberTxs = allMemberTxsSnap.docs.map(d => ({...d.data(), id: d.id } as Transaction));
