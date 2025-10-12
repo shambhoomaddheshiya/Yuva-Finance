@@ -454,17 +454,15 @@ export default function MembersPage() {
         const memberId = selectedMember.id;
         const batch = writeBatch(firestore);
 
-        // 1. Get settings and member document references
         const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
         const memberDocRef = doc(firestore, `users/${user.uid}/members`, memberId);
 
-        // 2. Read settings to update totalMembers and totalFund
         const settingsSnap = await getDoc(settingsDocRef);
         if (settingsSnap.exists()) {
             const settingsData = settingsSnap.data() as GroupSettings;
             const newTotalMembers = (settingsData.totalMembers || 0) > 0 ? settingsData.totalMembers - 1 : 0;
             
-            // Only adjust fund if the member was active
+            // Only adjust fund if the member was active. If inactive, their balance is already removed.
             const fundToReclaim = selectedMember.status === 'active' ? selectedMember.currentBalance : 0;
             const newTotalFund = (settingsData.totalFund || 0) - fundToReclaim;
             
@@ -474,14 +472,12 @@ export default function MembersPage() {
             });
         }
         
-        // 3. Find and delete all transactions for that member
         const transactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('memberId', '==', memberId));
         const transactionsSnapshot = await getDocs(transactionsQuery);
         transactionsSnapshot.forEach(doc => {
             batch.delete(doc.ref);
         });
 
-        // 4. Delete the member document itself (last)
         batch.delete(memberDocRef);
 
         await batch.commit();
