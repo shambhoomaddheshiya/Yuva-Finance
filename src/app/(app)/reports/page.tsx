@@ -338,9 +338,6 @@ export default function ReportsPage() {
                                                     <Calendar
                                                         initialFocus
                                                         mode="range"
-                                                        captionLayout="dropdown-buttons"
-                                                        fromYear={getYear(new Date()) - 10}
-                                                        toYear={getYear(new Date())}
                                                         selected={field.value}
                                                         onSelect={field.onChange}
                                                         numberOfMonths={2}
@@ -421,9 +418,3 @@ export default function ReportsPage() {
         </div>
     );
 }
-
-    
-
-    
-
-    
