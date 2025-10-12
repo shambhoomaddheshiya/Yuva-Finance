@@ -74,7 +74,7 @@ export default function ReportsPage() {
             return tx.date.toDate();
         }
         // Fallback for string dates, assuming UTC if no timezone is present
-        return new Date(tx.date + 'T00:00:00Z');
+        return new Date(tx.date as string);
     };
 
     const generateReport = async (values: z.infer<typeof reportSchema>) => {
@@ -131,18 +131,19 @@ export default function ReportsPage() {
             }
 
             // Calculate summary
-            const totalDeposits = transactions.filter(tx => tx.type === 'deposit').reduce((sum, tx) => sum + tx.amount, 0);
-            const totalWithdrawals = transactions.filter(tx => tx.type === 'withdrawal').reduce((sum, tx) => sum + tx.amount, 0);
-            const netChange = totalDeposits - totalWithdrawals;
-            const endingFund = settings.totalFund;
-            const startingFund = endingFund - netChange;
+            const totalDepositsForPeriod = transactions.filter(tx => tx.type === 'deposit').reduce((sum, tx) => sum + tx.amount, 0);
+            const totalWithdrawalsForPeriod = transactions.filter(tx => tx.type === 'withdrawal').reduce((sum, tx) => sum + tx.amount, 0);
+            const netChange = totalDepositsForPeriod - totalWithdrawalsForPeriod;
+            
+            const totalDepositedAllTime = members.reduce((sum, member) => sum + member.totalDeposited, 0);
+            const totalRemainingFund = settings.totalFund;
             
              const summary = {
-                'Starting Fund': startingFund.toFixed(2),
-                'Total Deposits': totalDeposits.toFixed(2),
-                'Total Withdrawals': totalWithdrawals.toFixed(2),
-                'Net Change': netChange.toFixed(2),
-                'Ending Fund (Remaining Balance)': endingFund.toFixed(2),
+                'Total Deposited (All Time)': totalDepositedAllTime.toFixed(2),
+                'Total Remaining Fund': totalRemainingFund.toFixed(2),
+                'Deposits in Period': totalDepositsForPeriod.toFixed(2),
+                'Withdrawals in Period': totalWithdrawalsForPeriod.toFixed(2),
+                'Net Change in Period': netChange.toFixed(2),
             };
 
             const dataForExport = transactions.map(tx => ({
