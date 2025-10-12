@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
-import { DayPicker, DropdownProps } from "react-day-picker"
+import { DayPicker, DropdownProps, useDayPicker, useNavigation } from "react-day-picker"
 import { format, getYear, getMonth } from 'date-fns';
 
 import { cn } from "@/lib/utils"
@@ -16,8 +16,12 @@ function Calendar({
   className,
   classNames,
   showOutsideDays = true,
+  onToMonthChange,
   ...props
-}: CalendarProps) {
+}: CalendarProps & { onToMonthChange?: (month: Date) => void }) {
+  const { toMonth, fromMonth, fromYear, toYear } = useDayPicker();
+
+  const { goToMonth, nextMonth, previousMonth } = useNavigation();
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
@@ -71,11 +75,22 @@ function Calendar({
             } as React.ChangeEvent<HTMLSelectElement>;
             onChange?.(event);
           };
+          const isToMonth = props.name === "toMonth";
           return (
             <Select
               value={value?.toString()}
               onValueChange={(value) => {
-                handleChange(value);
+                if (isToMonth && onToMonthChange) {
+                  const newToMonth = new Date(toMonth || new Date());
+                  if (props.name.includes("year")) {
+                    newToMonth.setFullYear(Number(value));
+                  } else {
+                    newToMonth.setMonth(Number(value));
+                  }
+                  onToMonthChange(newToMonth);
+                } else {
+                  handleChange(value);
+                }
               }}
             >
               <SelectTrigger className="w-auto focus:ring-0 focus:ring-offset-0 h-auto p-1 text-xs">

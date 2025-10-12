@@ -52,6 +52,7 @@ export default function ReportsPage() {
     const { user } = useUser();
     const firestore = useFirestore();
     const [isLoading, setIsLoading] = useState(false);
+    const [fromMonth, setFromMonth] = useState<Date>(new Date());
     const [toDateMonth, setToDateMonth] = useState<Date | undefined>(addMonths(new Date(), 1));
 
 
@@ -72,15 +73,6 @@ export default function ReportsPage() {
     });
 
     const reportType = form.watch('reportType');
-    const dateRangeValue = form.watch('dateRange');
-
-    useEffect(() => {
-        if (!dateRangeValue?.from) {
-          setToDateMonth(addMonths(new Date(), 1));
-        } else {
-          setToDateMonth(addMonths(dateRangeValue.from, 1));
-        }
-    }, [dateRangeValue?.from]);
     
     const getTransactionDate = (tx: Transaction) => {
         if (tx.date instanceof Timestamp) {
@@ -349,9 +341,10 @@ export default function ReportsPage() {
                                                     <Calendar
                                                         initialFocus
                                                         mode="range"
-                                                        month={field.value?.from || new Date()}
+                                                        month={fromMonth}
+                                                        onMonthChange={setFromMonth}
                                                         toMonth={toDateMonth}
-                                                        onMonthChange={setToDateMonth}
+                                                        onToMonthChange={setToDateMonth}
                                                         captionLayout="dropdown-buttons"
                                                         fromYear={getYear(new Date()) - 10}
                                                         toYear={getYear(new Date())}
