@@ -20,16 +20,23 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear, addMonths } from 'date-fns';
+import { Calendar as CalendarIcon } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
+import { DateRange } from 'react-day-picker';
 
 const reportSchema = z.object({
-  reportType: z.enum(['monthly', 'yearly']),
+  reportType: z.enum(['monthly', 'yearly', 'custom']),
   year: z.string().optional(),
   month: z.string().optional(),
+  dateRange: z.custom<DateRange>(value => value instanceof Object && 'from' in value && 'to' in value, 'Please select a valid date range.').optional(),
   transactionType: z.enum(['all', 'deposit', 'withdrawal']),
   format: z.enum(['pdf', 'excel']),
 }).refine(data => {
     if (data.reportType === 'monthly') return !!data.year && !!data.month;
     if (data.reportType === 'yearly') return !!data.year;
+    if (data.reportType === 'custom') return !!data.dateRange && !!data.dateRange.from && !!data.dateRange.to;
     return false;
 }, {
     message: 'Please complete all required fields for the selected report type.',
@@ -75,7 +82,7 @@ export default function ReportsPage() {
         setIsLoading(true);
 
         try {
-            const { reportType, year, month, transactionType, format: fileFormat } = values;
+            const { reportType, year, month, dateRange, transactionType, format: fileFormat } = values;
             let startDate: Date;
             let endDate: Date;
             let reportTitle: string;
@@ -91,6 +98,10 @@ export default function ReportsPage() {
                 startDate = startOfYear(new Date(selectedYear, 0));
                 endDate = endOfYear(new Date(selectedYear, 0));
                 reportTitle = `Yearly Report: ${year}`;
+            } else if (reportType === 'custom' && dateRange?.from && dateRange?.to) {
+                startDate = dateRange.from;
+                endDate = dateRange.to;
+                reportTitle = `Custom Report: ${format(startDate, 'LLL dd, y')} - ${format(endDate, 'LLL dd, y')}`;
             } else {
                  toast({
                     variant: 'destructive',
@@ -238,6 +249,10 @@ export default function ReportsPage() {
                                                     <FormControl><RadioGroupItem value="yearly" /></FormControl>
                                                     <FormLabel className="font-normal">Yearly</FormLabel>
                                                 </FormItem>
+                                                <FormItem className="flex items-center space-x-3 space-y-0">
+                                                    <FormControl><RadioGroupItem value="custom" /></FormControl>
+                                                    <FormLabel className="font-normal">Custom Range</FormLabel>
+                                                </FormItem>
                                             </RadioGroup>
                                         </FormControl>
                                         <FormMessage />
@@ -282,6 +297,57 @@ export default function ReportsPage() {
                                         />
                                     )}
                                 </div>
+                            )}
+
+                            {reportType === 'custom' && (
+                                <FormField
+                                    control={form.control}
+                                    name="dateRange"
+                                    render={({ field }) => (
+                                    <FormItem className="flex flex-col">
+                                        <FormLabel>Date range</FormLabel>
+                                        <Popover>
+                                        <PopoverTrigger asChild>
+                                            <FormControl>
+                                            <Button
+                                                variant={'outline'}
+                                                className={cn(
+                                                'w-[300px] justify-start text-left font-normal',
+                                                !field.value && 'text-muted-foreground'
+                                                )}
+                                            >
+                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                {field.value?.from ? (
+                                                field.value.to ? (
+                                                    <>
+                                                    {format(field.value.from, 'LLL dd, y')} -{' '}
+                                                    {format(field.value.to, 'LLL dd, y')}
+                                                    </>
+                                                ) : (
+                                                    format(field.value.from, 'LLL dd, y')
+                                                )
+                                                ) : (
+                                                <span>Pick a date</span>
+                                                )}
+                                            </Button>
+                                            </FormControl>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0" align="start">
+                                            <Calendar
+                                                initialFocus
+                                                mode="range"
+                                                fromYear={getYear(new Date()) - 10}
+                                                toYear={getYear(new Date())}
+                                                selected={field.value}
+                                                onSelect={field.onChange}
+                                                numberOfMonths={2}
+                                            />
+                                        </PopoverContent>
+                                        </Popover>
+                                        <FormMessage />
+                                    </FormItem>
+                                    )}
+                                />
                             )}
 
                              <FormField
