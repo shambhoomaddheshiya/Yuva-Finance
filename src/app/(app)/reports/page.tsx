@@ -30,14 +30,14 @@ const reportSchema = z.object({
   reportType: z.enum(['monthly', 'yearly', 'custom']),
   year: z.string().optional(),
   month: z.string().optional(),
-  dateRange: z.custom<DateRange>(value => value instanceof Object && 'from' in value && 'to' in value, 'Please select a valid date range.').optional(),
+  dateRange: z.custom<DateRange>(value => value instanceof Object && 'from' in value, 'Please select a valid date range.').optional(),
   transactionType: z.enum(['all', 'deposit', 'withdrawal']),
   format: z.enum(['pdf', 'excel']),
 }).refine(data => {
     if (data.reportType === 'monthly') return !!data.year && !!data.month;
     if (data.reportType === 'yearly') return !!data.year;
     if (data.reportType === 'custom') return !!data.dateRange && !!data.dateRange.from && !!data.dateRange.to;
-    return false;
+    return true; // Allow report generation if no specific validation fails
 }, {
     message: 'Please complete all required fields for the selected report type.',
     path: ['reportType'],
@@ -49,6 +49,7 @@ export default function ReportsPage() {
     const { user } = useUser();
     const firestore = useFirestore();
     const [isLoading, setIsLoading] = useState(false);
+    const [displayMonth, setDisplayMonth] = useState<Date>(new Date());
     
     const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
     const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings`, 'settings') : null, [user, firestore]);
@@ -336,8 +337,8 @@ export default function ReportsPage() {
                                             <Calendar
                                                 initialFocus
                                                 mode="range"
-                                                fromYear={getYear(new Date()) - 10}
-                                                toYear={getYear(new Date())}
+                                                month={displayMonth}
+                                                onMonthChange={setDisplayMonth}
                                                 selected={field.value}
                                                 onSelect={field.onChange}
                                                 numberOfMonths={2}
