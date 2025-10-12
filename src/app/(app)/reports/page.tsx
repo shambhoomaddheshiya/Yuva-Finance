@@ -109,6 +109,7 @@ export default function ReportsPage() {
                     title: 'Invalid Selection',
                     description: 'Please provide all necessary date information.',
                 });
+                setIsLoading(false);
                 return;
             }
 
@@ -119,14 +120,14 @@ export default function ReportsPage() {
             );
 
             const querySnapshot = await getDocs(transactionsQuery);
-            const transactions = querySnapshot.docs.map(doc => doc.data() as Transaction);
+            const transactions = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction));
             
             if (transactions.length === 0) {
                 toast({
-                    variant: 'destructive',
                     title: 'No Data',
                     description: 'No transactions found for the selected period.',
                 });
+                setIsLoading(false);
                 return;
             }
 
@@ -139,11 +140,11 @@ export default function ReportsPage() {
             const totalRemainingFund = settings.totalFund;
             
              const summary = {
-                'Total Deposited (All Time)': totalDepositedAllTime.toFixed(2),
-                'Total Remaining Fund': totalRemainingFund.toFixed(2),
-                'Deposits in Period': totalDepositsForPeriod.toFixed(2),
-                'Withdrawals in Period': totalWithdrawalsForPeriod.toFixed(2),
-                'Net Change in Period': netChange.toFixed(2),
+                'Total Deposited (All Time)': `Rs. ${totalDepositedAllTime.toLocaleString('en-IN')}`,
+                'Total Remaining Fund': `Rs. ${totalRemainingFund.toLocaleString('en-IN')}`,
+                'Deposits in Period': `Rs. ${totalDepositsForPeriod.toLocaleString('en-IN')}`,
+                'Withdrawals in Period': `Rs. ${totalWithdrawalsForPeriod.toLocaleString('en-IN')}`,
+                'Net Change in Period': `Rs. ${netChange.toLocaleString('en-IN')}`,
             };
 
             const dataForExport = transactions.map(tx => ({
@@ -165,7 +166,7 @@ export default function ReportsPage() {
                     startY: 22,
                     theme: 'striped',
                     styles: { fontSize: 10 },
-                    head: [['Metric', 'Amount']],
+                    head: [['Metric', 'Amount (INR)']],
                     headStyles: { fillColor: [34, 139, 34] },
                 });
                 
@@ -178,7 +179,7 @@ export default function ReportsPage() {
 
                 doc.save(`report-${reportType}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
             } else if (fileFormat === 'excel') {
-                const summarySheetData = Object.entries(summary).map(([key, value]) => ({ 'Metric': key, 'Amount': parseFloat(value) }));
+                const summarySheetData = Object.entries(summary).map(([key, value]) => ({ 'Metric': key, 'Amount (INR)': value }));
                 const summaryWorksheet = XLSX.utils.json_to_sheet(summarySheetData);
                 const dataWorksheet = XLSX.utils.json_to_sheet(dataForExport);
                 
