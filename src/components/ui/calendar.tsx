@@ -60,8 +60,6 @@ function Calendar({
         IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
       }}
       captionLayout="dropdown-buttons"
-      fromYear={new Date().getFullYear() - 10}
-      toYear={new Date().getFullYear()}
       {...props}
     />
   )
