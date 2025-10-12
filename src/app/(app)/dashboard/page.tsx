@@ -58,7 +58,7 @@ export default function DashboardPage() {
   
   const loading = settingsLoading || membersLoading || txLoading;
   
-  const totalRemainingFund = members ? members.filter(m => m.status === 'active').reduce((sum, member) => sum + member.currentBalance, 0) : 0;
+  const totalRemainingFund = members ? members.filter(m => m.status === 'active').reduce((sum, member) => sum + member.currentBalance + member.interestEarned, 0) : 0;
   const totalDepositedAllTime = members ? members.filter(m => m.status === 'active').reduce((sum, member) => sum + member.totalDeposited, 0) : 0;
   const activeMembersCount = members ? members.filter(m => m.status === 'active').length : 0;
 

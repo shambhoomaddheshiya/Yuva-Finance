@@ -307,6 +307,8 @@ function PassbookView({ member }: { member: Member }) {
     const sortedTransactions = useMemo(() => {
         return transactions ? [...transactions].sort((a, b) => new Date(b.date as string).getTime() - new Date(a.date as string).getTime()) : [];
     }, [transactions]);
+    
+    const memberTotalBalance = member.currentBalance + member.interestEarned;
 
     return (
         <div className="space-y-4">
@@ -316,7 +318,7 @@ function PassbookView({ member }: { member: Member }) {
                 <p><span className="font-semibold">Mob No:</span> {member.phone}</p>
                 <p className="col-span-2"><span className="font-semibold">Aadhaar:</span> {formatAadhaar(member.aadhaar)}</p>
                 <p><span className="font-semibold">Joined:</span> {new Date(member.joinDate).toLocaleDateString()}</p>
-                <p className="col-span-3 font-medium"><span className="font-semibold">Balance:</span> Rs {member.currentBalance.toLocaleString('en-IN')}</p>
+                <p className="col-span-3 font-medium"><span className="font-semibold">Balance:</span> Rs {memberTotalBalance.toLocaleString('en-IN')}</p>
             </div>
             <Card>
                 <CardHeader>
@@ -423,7 +425,8 @@ export default function MembersPage() {
         const settingsSnap = await getDoc(settingsDocRef);
         if(settingsSnap.exists()){
             const settingsData = settingsSnap.data() as GroupSettings;
-            const fundChange = newStatus === 'active' ? member.currentBalance : -member.currentBalance;
+            const memberTotalBalance = member.currentBalance + member.interestEarned;
+            const fundChange = newStatus === 'active' ? memberTotalBalance : -memberTotalBalance;
             const newTotalFund = (settingsData.totalFund || 0) + fundChange;
             batch.update(settingsDocRef, { totalFund: newTotalFund });
         }
@@ -463,7 +466,8 @@ export default function MembersPage() {
             const newTotalMembers = (settingsData.totalMembers || 0) > 0 ? settingsData.totalMembers - 1 : 0;
             
             // Only adjust fund if the member was active. If inactive, their balance is already removed.
-            const fundToReclaim = selectedMember.status === 'active' ? selectedMember.currentBalance : 0;
+            const memberTotalBalance = selectedMember.currentBalance + selectedMember.interestEarned;
+            const fundToReclaim = selectedMember.status === 'active' ? memberTotalBalance : 0;
             const newTotalFund = (settingsData.totalFund || 0) - fundToReclaim;
             
             batch.update(settingsDocRef, { 
@@ -585,7 +589,7 @@ export default function MembersPage() {
                     <TableCell>{member.phone}</TableCell>
                     <TableCell>{formatAadhaar(member.aadhaar)}</TableCell>
                     <TableCell>{new Date(member.joinDate).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right font-mono">₹{member.currentBalance.toLocaleString('en-IN')}</TableCell>
+                    <TableCell className="text-right font-mono">₹{(member.currentBalance + member.interestEarned).toLocaleString('en-IN')}</TableCell>
                      <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
