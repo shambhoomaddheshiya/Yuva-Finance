@@ -193,7 +193,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
                 <FormItem>
                 <FormLabel>Member ID</FormLabel>
                 <FormControl>
-                    <Input placeholder="MEMBER-001" {...field} disabled={isEdit} />
+                    <Input placeholder="MEMBER-001" {...field} />
                 </FormControl>
                 <FormMessage />
                 </FormItem>
