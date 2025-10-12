@@ -92,6 +92,7 @@ const editTransactionSchema = transactionSchema.omit({ memberId: true, type: tru
 function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const { user } = useUser();
   const firestore = useFirestore();
   const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
@@ -107,6 +108,12 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
       type: 'deposit'
     },
   });
+
+  const handleMemberChange = (memberId: string) => {
+    const member = members?.find(m => m.id === memberId) || null;
+    setSelectedMember(member);
+    form.setValue('memberId', memberId);
+  }
 
   async function onSubmit(values: z.infer<typeof transactionSchema>) {
     if (!user || !firestore) return;
@@ -188,7 +195,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
           render={({ field }) => (
             <FormItem>
               <FormLabel>Member</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value} disabled={membersLoading}>
+              <Select onValueChange={handleMemberChange} defaultValue={field.value} disabled={membersLoading}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a member" />
@@ -200,6 +207,11 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                   ))}
                 </SelectContent>
               </Select>
+               {selectedMember && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  Current Balance: <span className="font-medium">₹{selectedMember.currentBalance.toLocaleString('en-IN')}</span>
+                </p>
+              )}
               <FormMessage />
             </FormItem>
           )}
@@ -343,10 +355,12 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
         const newAmountChange = transaction.type === 'deposit' ? values.amount : -values.amount;
         const amountDifference = newAmountChange - oldAmountChange;
 
-        if (amountDifference !== 0 && memberData.currentBalance + amountDifference < 0) {
+        // This check is the most critical part for ensuring data integrity.
+        if (memberData.currentBalance + amountDifference < 0) {
             throw new Error("Updating this transaction would result in a negative balance for the member.");
         }
         
+        // Calculate new totals for member and group
         const newMemberBalance = memberData.currentBalance + amountDifference;
         const newTotalFund = settingsData.totalFund + amountDifference;
         const newTotalDeposited = memberData.totalDeposited - (transaction.type === 'deposit' ? transaction.amount : 0) + (transaction.type === 'deposit' ? values.amount : 0);
@@ -354,11 +368,12 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
 
 
         // 1. Update the transaction itself
+        // The balance stored with the transaction must be updated to reflect the member's new total balance
         batch.update(txRef, {
             amount: values.amount,
             date: Timestamp.fromDate(values.date),
             description: values.description,
-            balance: newMemberBalance,
+            balance: newMemberBalance, // This is a key change to keep transaction log consistent
         });
 
         // 2. Update member's totals
