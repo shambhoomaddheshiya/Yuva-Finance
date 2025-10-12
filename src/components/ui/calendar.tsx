@@ -3,7 +3,6 @@
 import * as React from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { DayPicker, DropdownProps, useDayPicker, useNavigation } from "react-day-picker"
-import { format, getYear, getMonth } from 'date-fns';
 
 import { cn } from "@/lib/utils"
 import { buttonVariants, Button } from "@/components/ui/button"
@@ -12,6 +11,92 @@ import { ScrollArea } from "./scroll-area";
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>
 
+function CalendarCaption({
+  onToMonthChange,
+  ...props
+}: React.ComponentProps<typeof DayPicker> & { onToMonthChange?: (month: Date) => void }) {
+  const { toMonth, fromMonth, fromYear, toYear } = useDayPicker();
+  const { goToMonth, nextMonth, previousMonth } = useNavigation();
+
+  return (
+    <div className="flex justify-center pt-1 relative items-center">
+      <div className="flex gap-2 items-center">
+        <DayPicker
+          {...props}
+          components={{
+            Dropdown: ({ value, onChange, children, ...dropdownProps }: DropdownProps) => {
+              const options = React.Children.toArray(
+                children
+              ) as React.ReactElement<React.HTMLProps<HTMLOptionElement>>[];
+              const selected = options.find((child) => child.props.value === value);
+              const handleChange = (value: string) => {
+                const event = {
+                  target: { value },
+                } as React.ChangeEvent<HTMLSelectElement>;
+                onChange?.(event);
+              };
+              const isToMonth = dropdownProps.name === "toMonth";
+              return (
+                <Select
+                  value={value?.toString()}
+                  onValueChange={(value) => {
+                    if (isToMonth && onToMonthChange) {
+                      const newToMonth = new Date(toMonth || new Date());
+                      if (dropdownProps.name.includes("year")) {
+                        newToMonth.setFullYear(Number(value));
+                      } else {
+                        newToMonth.setMonth(Number(value));
+                      }
+                      onToMonthChange(newToMonth);
+                    } else {
+                      handleChange(value);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-auto focus:ring-0 focus:ring-offset-0 h-auto p-1 text-xs">
+                    <SelectValue>{selected?.props?.children}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent position="popper">
+                     <ScrollArea className="h-48">
+                        {options.map((option, id: number) => (
+                          <SelectItem
+                            key={`${option.props.value}-${id}`}
+                            value={option.props.value?.toString() ?? ""}
+                          >
+                            {option.props.children}
+                          </SelectItem>
+                        ))}
+                     </ScrollArea>
+                  </SelectContent>
+                </Select>
+              );
+            },
+          }}
+        />
+      </div>
+      <div className="space-x-1 flex items-center">
+        <Button
+          onClick={() => previousMonth && goToMonth(previousMonth)}
+          disabled={!previousMonth}
+          variant="outline"
+          className="h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute left-1"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => nextMonth && goToMonth(nextMonth)}
+          disabled={!nextMonth}
+          variant="outline"
+          className="h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute right-1"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+
 function Calendar({
   className,
   classNames,
@@ -19,9 +104,6 @@ function Calendar({
   onToMonthChange,
   ...props
 }: CalendarProps & { onToMonthChange?: (month: Date) => void }) {
-  const { toMonth, fromMonth, fromYear, toYear } = useDayPicker();
-
-  const { goToMonth, nextMonth, previousMonth } = useNavigation();
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
@@ -29,7 +111,7 @@ function Calendar({
       classNames={{
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
-        caption: "flex justify-center pt-1 relative items-center",
+        caption: "hidden",
         caption_label: "text-sm font-medium hidden",
         caption_dropdowns: "flex gap-2 items-center",
         nav: "space-x-1 flex items-center",
@@ -62,55 +144,11 @@ function Calendar({
         ...classNames,
       }}
       components={{
+        Caption: (captionProps) => (
+          <CalendarCaption {...props} {...captionProps} onToMonthChange={onToMonthChange} />
+        ),
         IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
         IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
-        Dropdown: ({ value, onChange, children, ...props }: DropdownProps) => {
-          const options = React.Children.toArray(
-            children
-          ) as React.ReactElement<React.HTMLProps<HTMLOptionElement>>[];
-          const selected = options.find((child) => child.props.value === value);
-          const handleChange = (value: string) => {
-            const event = {
-              target: { value },
-            } as React.ChangeEvent<HTMLSelectElement>;
-            onChange?.(event);
-          };
-          const isToMonth = props.name === "toMonth";
-          return (
-            <Select
-              value={value?.toString()}
-              onValueChange={(value) => {
-                if (isToMonth && onToMonthChange) {
-                  const newToMonth = new Date(toMonth || new Date());
-                  if (props.name.includes("year")) {
-                    newToMonth.setFullYear(Number(value));
-                  } else {
-                    newToMonth.setMonth(Number(value));
-                  }
-                  onToMonthChange(newToMonth);
-                } else {
-                  handleChange(value);
-                }
-              }}
-            >
-              <SelectTrigger className="w-auto focus:ring-0 focus:ring-offset-0 h-auto p-1 text-xs">
-                <SelectValue>{selected?.props?.children}</SelectValue>
-              </SelectTrigger>
-              <SelectContent position="popper">
-                 <ScrollArea className="h-48">
-                    {options.map((option, id: number) => (
-                      <SelectItem
-                        key={`${option.props.value}-${id}`}
-                        value={option.props.value?.toString() ?? ""}
-                      >
-                        {option.props.children}
-                      </SelectItem>
-                    ))}
-                 </ScrollArea>
-              </SelectContent>
-            </Select>
-          );
-        },
       }}
       {...props}
     />
