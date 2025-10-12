@@ -343,51 +343,39 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
         const newAmountChange = transaction.type === 'deposit' ? values.amount : -values.amount;
         const amountDifference = newAmountChange - oldAmountChange;
 
-        if (amountDifference !== 0 && memberData.currentBalance - oldAmountChange + newAmountChange < 0) {
-            throw new Error("Updating this transaction would result in a negative balance.");
+        if (amountDifference !== 0 && memberData.currentBalance + amountDifference < 0) {
+            throw new Error("Updating this transaction would result in a negative balance for the member.");
         }
         
         const newMemberBalance = memberData.currentBalance + amountDifference;
         const newTotalFund = settingsData.totalFund + amountDifference;
+        const newTotalDeposited = memberData.totalDeposited - (transaction.type === 'deposit' ? transaction.amount : 0) + (transaction.type === 'deposit' ? values.amount : 0);
+        const newTotalWithdrawn = memberData.totalWithdrawn - (transaction.type === 'withdrawal' ? transaction.amount : 0) + (transaction.type === 'withdrawal' ? values.amount : 0);
+
 
         // 1. Update the transaction itself
         batch.update(txRef, {
             amount: values.amount,
             date: Timestamp.fromDate(values.date),
             description: values.description,
+            balance: newMemberBalance,
         });
 
-        // 2. Update member's current balance
-        batch.update(memberRef, { currentBalance: newMemberBalance });
+        // 2. Update member's totals
+        batch.update(memberRef, { 
+          currentBalance: newMemberBalance,
+          totalDeposited: newTotalDeposited,
+          totalWithdrawn: newTotalWithdrawn,
+        });
         
         // 3. Update group's total fund
         batch.update(settingsRef, { totalFund: newTotalFund });
-
-        // This simplified logic assumes that transaction edits don't change the order and affect all future balances.
-        // A full recalculation is very complex. This approach keeps the final balance correct.
-        // We need to warn the user that intermediate balances in the log might not be correct.
-        const allMemberTxsQuery = query(
-            collection(firestore, `users/${user.uid}/transactions`),
-            where('memberId', '==', transaction.memberId),
-            orderBy('date', 'desc') // Get latest transactions first
-        );
-        const allTxsSnap = await getDocs(allMemberTxsQuery);
-        let runningBalance = newMemberBalance;
-        for (const txDoc of allTxsSnap.docs) {
-             if (txDoc.id !== transaction.id) { // Don't update the one we just changed
-                batch.update(txDoc.ref, { balance: runningBalance });
-                const txData = txDoc.data() as Transaction;
-                const pastAmountChange = txData.type === 'deposit' ? -txData.amount : txData.amount;
-                runningBalance += pastAmountChange;
-             }
-        }
-
 
         await batch.commit();
 
         toast({
             title: 'Success!',
-            description: 'Transaction has been updated. Balances recalculated.',
+            description: 'Transaction has been updated successfully.',
         });
         onOpenChange(false);
     } catch (error: any) {
