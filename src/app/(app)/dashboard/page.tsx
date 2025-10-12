@@ -58,6 +58,7 @@ export default function DashboardPage() {
   
   const loading = settingsLoading || membersLoading || txLoading;
   
+  const totalRemainingFund = members ? members.filter(m => m.status === 'active').reduce((sum, member) => sum + member.currentBalance, 0) : 0;
   const totalDepositedAllTime = members ? members.filter(m => m.status === 'active').reduce((sum, member) => sum + member.totalDeposited, 0) : 0;
   const activeMembersCount = members ? members.filter(m => m.status === 'active').length : 0;
 
@@ -83,9 +84,9 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Remaining Fund"
-          value={settings && typeof settings.totalFund === 'number' ? `₹${settings.totalFund.toLocaleString('en-IN')}` : '...'}
+          value={members ? `₹${totalRemainingFund.toLocaleString('en-IN')}` : '...'}
           icon={Banknote}
-          loading={settingsLoading}
+          loading={membersLoading}
           description="Current cash balance"
         />
          <StatCard

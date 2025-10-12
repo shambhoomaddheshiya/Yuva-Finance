@@ -8,11 +8,10 @@ import * as z from 'zod';
 import { collection, getDocs, query, where, Timestamp, doc } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { useDoc } from '@/firebase/firestore/use-doc';
 import { Member, Transaction, GroupSettings } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
@@ -25,16 +24,14 @@ import { DateRangePicker } from '@/components/date-range-picker';
 
 
 const reportSchema = z.object({
-  reportType: z.enum(['monthly', 'yearly', 'custom', 'all']),
+  reportType: z.enum(['monthly', 'yearly', 'all']),
   year: z.string().optional(),
   month: z.string().optional(),
-  dateRange: z.custom<DateRange>(value => value instanceof Object && 'from' in value, 'Please select a valid date range.').optional(),
   transactionType: z.enum(['all', 'deposit', 'withdrawal']),
   format: z.enum(['pdf', 'excel']),
 }).refine(data => {
     if (data.reportType === 'monthly') return !!data.year && !!data.month;
     if (data.reportType === 'yearly') return !!data.year;
-    if (data.reportType === 'custom') return !!data.dateRange && !!data.dateRange.from && !!data.dateRange.to;
     return true; 
 }, {
     message: 'Please complete all required fields for the selected report type.',
@@ -49,10 +46,8 @@ export default function ReportsPage() {
     const [isLoading, setIsLoading] = useState(false);
     
     const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
-    const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings`, 'settings') : null, [user, firestore]);
 
     const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
-    const { data: settings, isLoading: settingsLoading } = useDoc<GroupSettings>(settingsRef);
     
 
     const form = useForm<z.infer<typeof reportSchema>>({
@@ -74,12 +69,12 @@ export default function ReportsPage() {
     };
 
     const generateReport = async (values: z.infer<typeof reportSchema>) => {
-        if (!user || !firestore || !members || !settings) return;
+        if (!user || !firestore || !members ) return;
 
         setIsLoading(true);
 
         try {
-            const { reportType, year, month, dateRange, transactionType, format: fileFormat } = values;
+            const { reportType, year, month, transactionType, format: fileFormat } = values;
             let startDate: Date | null = null;
             let endDate: Date | null = null;
             let reportTitle: string = 'All Transactions Report';
@@ -95,10 +90,6 @@ export default function ReportsPage() {
                 startDate = startOfYear(new Date(selectedYear, 0));
                 endDate = endOfYear(new Date(selectedYear, 0));
                 reportTitle = `Yearly Report: ${year}`;
-            } else if (reportType === 'custom' && dateRange?.from && dateRange?.to) {
-                startDate = dateRange.from;
-                endDate = dateRange.to;
-                reportTitle = `Custom Report: ${format(startDate, 'LLL dd, y')} - ${format(endDate, 'LLL dd, y')}`;
             } else if (reportType !== 'all') {
                  toast({
                     variant: 'destructive',
@@ -142,7 +133,7 @@ export default function ReportsPage() {
             const netChange = totalDepositsForPeriod - totalWithdrawalsForPeriod;
             
             const totalDepositedAllTime = members.reduce((sum, member) => sum + member.totalDeposited, 0);
-            const totalRemainingFund = settings.totalFund;
+            const totalRemainingFund = members.filter(m => m.status === 'active').reduce((sum, member) => sum + member.currentBalance, 0);
             
              const summary = {
                 'Total Deposited (All Time)': `Rs. ${totalDepositedAllTime.toLocaleString('en-IN')}`,
@@ -252,10 +243,6 @@ export default function ReportsPage() {
                                                     <FormControl><RadioGroupItem value="yearly" /></FormControl>
                                                     <FormLabel className="font-normal">Yearly</FormLabel>
                                                 </FormItem>
-                                                <FormItem className="flex items-center space-x-3 space-y-0">
-                                                    <FormControl><RadioGroupItem value="custom" /></FormControl>
-                                                    <FormLabel className="font-normal">Custom Range</FormLabel>
-                                                </FormItem>
                                             </RadioGroup>
                                         </FormControl>
                                         <FormMessage />
@@ -300,23 +287,6 @@ export default function ReportsPage() {
                                         />
                                     )}
                                 </div>
-                            )}
-
-                            {reportType === 'custom' && (
-                                <FormField
-                                    control={form.control}
-                                    name="dateRange"
-                                    render={({ field }) => (
-                                    <FormItem className="flex flex-col">
-                                        <FormLabel>Date range</FormLabel>
-                                        <DateRangePicker
-                                            value={field.value}
-                                            onChange={field.onChange}
-                                        />
-                                        <FormMessage />
-                                    </FormItem>
-                                    )}
-                                />
                             )}
 
                              <FormField
@@ -377,7 +347,7 @@ export default function ReportsPage() {
                                 )}
                             />
 
-                            <Button type="submit" disabled={isLoading || membersLoading || settingsLoading}>
+                            <Button type="submit" disabled={isLoading || membersLoading}>
                                 {isLoading ? 'Generating...' : 'Generate Report'}
                             </Button>
                         </form>
