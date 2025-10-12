@@ -61,13 +61,12 @@ export default function SettingsPage() {
     if (!user || !firestore || !settingsRef) return;
     setIsSubmitting(true);
     try {
-      const updatedSettings: Partial<GroupSettings> = {
-        groupName: values.groupName,
-        monthlyContribution: values.monthlyContribution,
-        interestRate: values.interestRate,
-      };
-      
-      await setDoc(settingsRef, updatedSettings, { merge: true });
+      // Create the settings document if it doesn't exist, otherwise merge
+      await setDoc(settingsRef, {
+          groupName: values.groupName,
+          monthlyContribution: values.monthlyContribution,
+          interestRate: values.interestRate,
+      }, { merge: true });
 
       toast({
         title: 'Settings Saved!',
