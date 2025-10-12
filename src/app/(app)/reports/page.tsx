@@ -58,6 +58,8 @@ export default function ReportsPage() {
 
     const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
     const { data: settings, isLoading: settingsLoading } = useDoc<GroupSettings>(settingsRef);
+    
+    const [month, setMonth] = useState<Date>(new Date());
 
 
     const form = useForm<z.infer<typeof reportSchema>>({
@@ -344,6 +346,8 @@ export default function ReportsPage() {
                                                         selected={field.value}
                                                         onSelect={field.onChange}
                                                         numberOfMonths={2}
+                                                        month={month}
+                                                        onMonthChange={setMonth}
                                                     />
                                                 </PopoverContent>
                                             </Popover>
@@ -420,5 +424,4 @@ export default function ReportsPage() {
             </Card>
         </div>
     );
-
-    
+}
