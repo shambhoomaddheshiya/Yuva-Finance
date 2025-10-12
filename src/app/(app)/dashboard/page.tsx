@@ -57,16 +57,13 @@ export default function DashboardPage() {
   const { data: transactions, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
   
   const loading = settingsLoading || membersLoading || txLoading;
-
-  const totalDepositedThisPeriod = transactions ? transactions.filter(t => t.type === 'deposit').reduce((acc, t) => acc + t.amount, 0) : 0;
-  const totalWithdrawnThisPeriod = transactions ? transactions.filter(t => t.type === 'withdrawal').reduce((acc, t) => acc + t.amount, 0) : 0;
   
   const totalDepositedAllTime = members ? members.filter(m => m.status === 'active').reduce((sum, member) => sum + member.totalDeposited, 0) : 0;
   const activeMembersCount = members ? members.filter(m => m.status === 'active').length : 0;
 
   const chartData = [
-    { name: 'Deposits', total: totalDepositedThisPeriod, fill: 'hsl(var(--primary))' },
-    { name: 'Withdrawals', total: totalWithdrawnThisPeriod, fill: 'hsl(var(--destructive))' },
+    { name: 'Deposits', total: transactions?.filter(t => t.type === 'deposit').reduce((acc, t) => acc + t.amount, 0) || 0, fill: 'hsl(var(--primary))' },
+    { name: 'Withdrawals', total: transactions?.filter(t => t.type === 'withdrawal').reduce((acc, t) => acc + t.amount, 0) || 0, fill: 'hsl(var(--destructive))' },
   ];
   
   const getTransactionDate = (tx: Transaction): Date => {
