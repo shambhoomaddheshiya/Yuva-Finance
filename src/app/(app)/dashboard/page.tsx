@@ -106,7 +106,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Interest Rate"
-          value={settings ? `${settings.interestRate}%` : '...'}
+          value={settings && typeof settings.interestRate === 'number' ? `${settings.interestRate}%` : '...'}
           icon={Percent}
           loading={settingsLoading}
           description="Annual interest rate"
