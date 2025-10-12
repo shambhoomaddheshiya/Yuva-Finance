@@ -53,9 +53,7 @@ export default function ReportsPage() {
     const firestore = useFirestore();
     const [isLoading, setIsLoading] = useState(false);
     const [fromMonth, setFromMonth] = useState<Date>(new Date());
-    const [toDateMonth, setToDateMonth] = useState<Date | undefined>(addMonths(new Date(), 1));
-
-
+    
     const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
     const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings`, 'settings') : null, [user, firestore]);
 
@@ -343,8 +341,6 @@ export default function ReportsPage() {
                                                         mode="range"
                                                         month={fromMonth}
                                                         onMonthChange={setFromMonth}
-                                                        toMonth={toDateMonth}
-                                                        onToMonthChange={setToDateMonth}
                                                         captionLayout="dropdown-buttons"
                                                         fromYear={getYear(new Date()) - 10}
                                                         toYear={getYear(new Date())}
@@ -428,3 +424,5 @@ export default function ReportsPage() {
         </div>
     );
 }
+
+    
