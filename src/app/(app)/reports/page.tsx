@@ -34,6 +34,7 @@ const reportSchema = z.object({
     from: z.date().optional(),
     to: z.date().optional(),
   }).optional(),
+  transactionType: z.enum(['all', 'deposit', 'withdrawal']),
   format: z.enum(['pdf', 'excel']),
 }).refine(data => {
     if (data.reportType === 'monthly') return !!data.year && !!data.month;
@@ -63,6 +64,7 @@ export default function ReportsPage() {
         resolver: zodResolver(reportSchema),
         defaultValues: {
             reportType: 'monthly',
+            transactionType: 'all',
             format: 'pdf',
         },
     });
@@ -83,7 +85,7 @@ export default function ReportsPage() {
         setIsLoading(true);
 
         try {
-            const { reportType, year, month, dateRange, format: fileFormat } = values;
+            const { reportType, year, month, dateRange, transactionType, format: fileFormat } = values;
             let startDate: Date;
             let endDate: Date;
             let reportTitle: string;
@@ -120,18 +122,23 @@ export default function ReportsPage() {
             );
 
             const querySnapshot = await getDocs(transactionsQuery);
-            const transactions = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction));
+            let transactions = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction));
+            
+            // Filter by transaction type if not 'all'
+            if (transactionType !== 'all') {
+                transactions = transactions.filter(tx => tx.type === transactionType);
+            }
             
             if (transactions.length === 0) {
                 toast({
                     title: 'No Data',
-                    description: 'No transactions found for the selected period.',
+                    description: `No ${transactionType !== 'all' ? transactionType + ' ' : ''}transactions found for the selected period.`,
                 });
                 setIsLoading(false);
                 return;
             }
 
-            // Calculate summary
+            // Calculate summary based on the filtered transactions for the period
             const totalDepositsForPeriod = transactions.filter(tx => tx.type === 'deposit').reduce((sum, tx) => sum + tx.amount, 0);
             const totalWithdrawalsForPeriod = transactions.filter(tx => tx.type === 'withdrawal').reduce((sum, tx) => sum + tx.amount, 0);
             const netChange = totalDepositsForPeriod - totalWithdrawalsForPeriod;
@@ -159,11 +166,13 @@ export default function ReportsPage() {
             if (fileFormat === 'pdf') {
                 const doc = new jsPDF();
                 doc.text(reportTitle, 14, 16);
+                doc.setFontSize(10);
+                doc.text(`Transaction Type: ${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}`, 14, 22);
 
                 // Add summary table
                 autoTable(doc, {
                     body: Object.entries(summary),
-                    startY: 22,
+                    startY: 28,
                     theme: 'striped',
                     styles: { fontSize: 10 },
                     head: [['Metric', 'Amount (INR)']],
@@ -228,7 +237,7 @@ export default function ReportsPage() {
                                 name="reportType"
                                 render={({ field }) => (
                                     <FormItem className="space-y-3">
-                                        <FormLabel>Report Type</FormLabel>
+                                        <FormLabel>Report Period</FormLabel>
                                         <FormControl>
                                             <RadioGroup
                                                 onValueChange={field.onChange}
@@ -341,6 +350,37 @@ export default function ReportsPage() {
                                     )}
                                 />
                             )}
+
+                             <FormField
+                                control={form.control}
+                                name="transactionType"
+                                render={({ field }) => (
+                                    <FormItem className="space-y-3">
+                                        <FormLabel>Transaction Type</FormLabel>
+                                        <FormControl>
+                                            <RadioGroup
+                                                onValueChange={field.onChange}
+                                                defaultValue={field.value}
+                                                className="flex flex-col space-y-1"
+                                            >
+                                                <FormItem className="flex items-center space-x-3 space-y-0">
+                                                    <FormControl><RadioGroupItem value="all" /></FormControl>
+                                                    <FormLabel className="font-normal">All Transactions</FormLabel>
+                                                </FormItem>
+                                                <FormItem className="flex items-center space-x-3 space-y-0">
+                                                    <FormControl><RadioGroupItem value="deposit" /></FormControl>
+                                                    <FormLabel className="font-normal">Deposits Only</FormLabel>
+                                                </FormItem>
+                                                <FormItem className="flex items-center space-x-3 space-y-0">
+                                                    <FormControl><RadioGroupItem value="withdrawal" /></FormControl>
+                                                    <FormLabel className="font-normal">Withdrawals Only</FormLabel>
+                                                </FormItem>
+                                            </RadioGroup>
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
 
                              <FormField
                                 control={form.control}
