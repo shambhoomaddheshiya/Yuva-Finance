@@ -135,10 +135,6 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         
         const amountChange = values.type === 'deposit' ? values.amount : -values.amount;
 
-        if (values.type === 'withdrawal' && memberData.currentBalance < values.amount) {
-            throw new Error('Withdrawal amount exceeds member balance.');
-        }
-
         const newMemberBalance = memberData.currentBalance + amountChange;
 
         // 1. Create the new transaction
@@ -320,7 +316,6 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
     if (tx.date instanceof Timestamp) {
       return tx.date.toDate();
     }
-    // Fallback for string dates, assuming UTC to avoid timezone shifts on conversion
     return new Date(tx.date as string);
   }
 
@@ -358,10 +353,6 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
         
         // This is the net change for the balance based on transaction type
         const balanceChange = transaction.type === 'deposit' ? amountDifference : -amountDifference;
-
-        if (memberData.currentBalance + balanceChange < 0) {
-            throw new Error("Updating this transaction would result in a negative balance for the member.");
-        }
         
         // Calculate new totals for member and group
         const newMemberBalance = memberData.currentBalance + balanceChange;
