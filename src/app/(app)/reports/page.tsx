@@ -341,7 +341,6 @@ export default function ReportsPage() {
                                                         captionLayout="dropdown-buttons"
                                                         fromYear={getYear(new Date()) - 10}
                                                         toYear={getYear(new Date())}
-                                                        defaultMonth={field.value?.from}
                                                         selected={field.value}
                                                         onSelect={field.onChange}
                                                         numberOfMonths={2}
