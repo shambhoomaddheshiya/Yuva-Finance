@@ -342,7 +342,7 @@ export default function ReportsPage() {
                                                         fromYear={getYear(new Date()) - 10}
                                                         toYear={getYear(new Date())}
                                                         defaultMonth={field.value?.from}
-                                                        selected={{from: field.value?.from!, to: field.value?.to}}
+                                                        selected={field.value}
                                                         onSelect={field.onChange}
                                                         numberOfMonths={2}
                                                     />
