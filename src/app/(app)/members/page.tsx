@@ -454,35 +454,36 @@ export default function MembersPage() {
         const memberId = selectedMember.id;
         const batch = writeBatch(firestore);
 
-        // 1. Delete member document
-        const memberDocRef = doc(firestore, `users/${user.uid}/members`, memberId);
-        
-        // 2. Find and delete all transactions for that member
-        const transactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('memberId', '==', memberId));
-        const transactionsSnapshot = await getDocs(transactionsQuery);
-        transactionsSnapshot.forEach(doc => {
-            batch.delete(doc.ref);
-        });
-
-        // 3. Update totalMembers and totalFund in groupSettings
+        // 1. Get settings and member document references
         const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
+        const memberDocRef = doc(firestore, `users/${user.uid}/members`, memberId);
+
+        // 2. Read settings to update totalMembers and totalFund
         const settingsSnap = await getDoc(settingsDocRef);
         if (settingsSnap.exists()) {
             const settingsData = settingsSnap.data() as GroupSettings;
             const newTotalMembers = (settingsData.totalMembers || 0) > 0 ? settingsData.totalMembers - 1 : 0;
             
             // Only adjust fund if the member was active
-            const newTotalFund = selectedMember.status === 'active' 
-                ? (settingsData.totalFund || 0) - selectedMember.currentBalance
-                : settingsData.totalFund;
-
+            const fundToReclaim = selectedMember.status === 'active' ? selectedMember.currentBalance : 0;
+            const newTotalFund = (settingsData.totalFund || 0) - fundToReclaim;
+            
             batch.update(settingsDocRef, { 
                 totalMembers: newTotalMembers,
                 totalFund: newTotalFund < 0 ? 0 : newTotalFund
             });
         }
         
+        // 3. Find and delete all transactions for that member
+        const transactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('memberId', '==', memberId));
+        const transactionsSnapshot = await getDocs(transactionsQuery);
+        transactionsSnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
+        // 4. Delete the member document itself (last)
         batch.delete(memberDocRef);
+
         await batch.commit();
 
         toast({
