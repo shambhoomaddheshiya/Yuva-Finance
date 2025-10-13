@@ -74,9 +74,10 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { DateRangePicker } from '@/components/date-range-picker';
 import { DateRange } from 'react-day-picker';
 
-const transactionSchema = z.object({
+const transactionObjectSchema = z.object({
   memberId: z.string().nonempty('Please select a member.'),
   type: z.enum(['deposit', 'loan', 'repayment'], {
     required_error: 'You need to select a transaction type.',
@@ -86,7 +87,9 @@ const transactionSchema = z.object({
   description: z.string().optional(),
   principal: z.coerce.number().optional(),
   interest: z.coerce.number().optional(),
-}).refine(data => {
+});
+
+const transactionSchema = transactionObjectSchema.refine(data => {
     if (data.type === 'repayment') {
         const principal = data.principal || 0;
         const interest = data.interest || 0;
@@ -98,9 +101,18 @@ const transactionSchema = z.object({
     path: ["amount"],
 });
 
-
 // For the edit form - editing is complex so we'll simplify it
-const editTransactionSchema = transactionSchema.omit({ memberId: true, type: true });
+const editTransactionSchema = transactionObjectSchema.omit({ memberId: true, type: true }).refine(data => {
+    // Since type is omitted, we need to handle this conditionally.
+    // In this form, type is fixed to 'repayment', so we apply the same logic.
+    const principal = data.principal || 0;
+    const interest = data.interest || 0;
+    // This check should only apply if it is a repayment, but since this schema is only for editing repayments...
+    return principal + interest === data.amount;
+}, {
+    message: "For repayments, Principal + Interest must equal the Total Amount.",
+    path: ["amount"],
+});
 
 
 function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
@@ -453,15 +465,21 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
         const memberRef = doc(firestore, `users/${user.uid}/members`, transaction.memberId);
         const settingsRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
 
-        const memberSnap = await getDoc(memberRef);
-        const settingsSnap = await getDoc(settingsRef);
+        // It's crucial to get the most recent data before making changes
+        const [memberSnap, settingsSnap, oldTxSnap] = await Promise.all([
+          getDoc(memberRef),
+          getDoc(settingsRef),
+          getDoc(txRef)
+        ]);
 
         if (!memberSnap.exists()) throw new Error("Member not found.");
         if (!settingsSnap.exists()) throw new Error("Settings not found.");
+        if (!oldTxSnap.exists()) throw new Error("Original transaction not found.");
         
         const memberData = memberSnap.data() as Member;
         const settingsData = settingsSnap.data() as GroupSettings;
-
+        const oldTxData = oldTxSnap.data() as Transaction;
+        
         // 1. Revert the old transaction
         let newMemberBalance = memberData.currentBalance;
         let newMemberLoanBalance = memberData.loanBalance || 0;
@@ -470,30 +488,30 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
         let newTotalRepayment = settingsData.totalRepayment || 0;
         let newTotalInterest = settingsData.totalInterest || 0;
 
-        switch (transaction.type) {
+        switch (oldTxData.type) {
             case 'deposit':
-                newMemberBalance -= transaction.amount;
-                newTotalDeposit -= transaction.amount;
+                newMemberBalance -= oldTxData.amount;
+                newTotalDeposit -= oldTxData.amount;
                 break;
             case 'loan':
-                newMemberLoanBalance -= transaction.amount;
-                newTotalLoan -= transaction.amount;
+                newMemberLoanBalance -= oldTxData.amount;
+                newTotalLoan -= oldTxData.amount;
                 break;
             case 'repayment':
-                newMemberLoanBalance += (transaction.principal || 0);
-                newTotalRepayment -= (transaction.principal || 0);
-                newTotalInterest -= (transaction.interest || 0);
+                newMemberLoanBalance += (oldTxData.principal || 0);
+                newTotalRepayment -= (oldTxData.principal || 0);
+                newTotalInterest -= (oldTxData.interest || 0);
                 break;
         }
 
-        // 2. Apply the new transaction
+        // 2. Apply the new transaction values
         const updatedTxData: Partial<Transaction> = {
             date: Timestamp.fromDate(values.date),
             description: values.description,
             amount: values.amount,
         };
         
-        switch (transaction.type) {
+        switch (transaction.type) { // Use the original transaction type for logic
             case 'deposit':
                 newMemberBalance += values.amount;
                 newTotalDeposit += values.amount;
@@ -518,7 +536,13 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
         }
 
         // 3. Set updates in batch
-        batch.update(memberRef, { currentBalance: newMemberBalance, loanBalance: newMemberLoanBalance });
+        batch.update(memberRef, { 
+            currentBalance: newMemberBalance, 
+            loanBalance: newMemberLoanBalance,
+            // also update total deposited/withdrawn on member if necessary for other views
+            totalDeposited: (memberData.totalDeposited || 0) - (oldTxData.type === 'deposit' ? oldTxData.amount : 0) + (transaction.type === 'deposit' ? values.amount : 0),
+            totalWithdrawn: (memberData.totalWithdrawn || 0) - (oldTxData.type === 'loan' ? oldTxData.amount : 0) + (transaction.type === 'loan' ? values.amount : 0),
+        });
         
         const newRemainingFund = newTotalDeposit - (newTotalLoan - newTotalRepayment) + newTotalInterest;
         batch.update(settingsRef, { 
@@ -763,8 +787,8 @@ export default function TransactionsPage() {
                     const fromDate = dateRange.from;
                     const toDate = dateRange.to;
                     if (txDate < fromDate || txDate > toDate) return false;
-                } else {
-                    return true;
+                } else if(dateRange?.from) {
+                    if (txDate < dateRange.from) return false;
                 }
                 break;
             case 'all':
@@ -952,42 +976,7 @@ export default function TransactionsPage() {
                 </div>
               )}
                {filter === 'custom' && (
-                 <Popover>
-                    <PopoverTrigger asChild>
-                        <Button
-                            id="date"
-                            variant={"outline"}
-                            className={cn(
-                                "w-[300px] justify-start text-left font-normal",
-                                !dateRange && "text-muted-foreground"
-                            )}
-                        >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {dateRange?.from ? (
-                                dateRange.to ? (
-                                    <>
-                                        {format(dateRange.from, "LLL dd, y")} -{" "}
-                                        {format(dateRange.to, "LLL dd, y")}
-                                    </>
-                                ) : (
-                                    format(dateRange.from, "LLL dd, y")
-                                )
-                            ) : (
-                                <span>Pick a date range</span>
-                            )}
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                            initialFocus
-                            mode="range"
-                            defaultMonth={dateRange?.from}
-                            selected={dateRange}
-                            onSelect={setDateRange}
-                            numberOfMonths={2}
-                        />
-                    </PopoverContent>
-                </Popover>
+                  <DateRangePicker value={dateRange} onChange={setDateRange} />
               )}
             </div>
           </div>

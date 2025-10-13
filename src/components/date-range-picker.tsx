@@ -22,6 +22,8 @@ interface DateRangePickerProps extends React.HTMLAttributes<HTMLDivElement> {
 
 const DateRangePicker = React.memo(
   ({ className, value, onChange }: DateRangePickerProps) => {
+    const [displayMonth, setDisplayMonth] = React.useState<Date>(new Date());
+    
     return (
       <div className={cn('grid gap-2', className)}>
         <Popover>
@@ -56,6 +58,8 @@ const DateRangePicker = React.memo(
               selected={value}
               onSelect={onChange}
               numberOfMonths={2}
+              month={displayMonth}
+              onMonthChange={setDisplayMonth}
             />
           </PopoverContent>
         </Popover>
@@ -67,5 +71,3 @@ const DateRangePicker = React.memo(
 DateRangePicker.displayName = 'DateRangePicker';
 
 export { DateRangePicker };
-
-    
