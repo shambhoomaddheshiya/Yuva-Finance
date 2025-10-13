@@ -22,9 +22,18 @@ interface DateRangePickerProps extends React.HTMLAttributes<HTMLDivElement> {
 
 const DateRangePicker = React.memo(
   ({ className, value, onChange }: DateRangePickerProps) => {
+    const [month, setMonth] = React.useState<Date | undefined>(value?.from);
+
+    React.useEffect(() => {
+        if (value?.from) {
+            setMonth(value.from);
+        }
+    }, [value?.from]);
+
+
     return (
       <div className={cn('grid gap-2', className)}>
-        <Popover>
+        <Popover onOpenChange={() => setMonth(value?.from)}>
           <PopoverTrigger asChild>
             <Button
               id="date"
@@ -51,11 +60,11 @@ const DateRangePicker = React.memo(
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
             <Calendar
-              initialFocus
               mode="range"
-              defaultMonth={value?.from}
               selected={value}
               onSelect={onChange}
+              month={month}
+              onMonthChange={setMonth}
               numberOfMonths={2}
             />
           </PopoverContent>
