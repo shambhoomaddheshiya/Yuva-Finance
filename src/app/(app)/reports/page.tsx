@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { collection, getDocs, query, where, Timestamp, doc } from 'firebase/firestore';
+import { collection, getDocs, query, where, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { Member, Transaction, GroupSettings } from '@/types';
@@ -27,7 +27,7 @@ const reportSchema = z.object({
   reportType: z.enum(['monthly', 'yearly', 'all', 'custom']),
   year: z.string().optional(),
   month: z.string().optional(),
-  customDateRange: z.custom<DateRange>(value => value instanceof Object && 'from' in value && 'to' in value).optional(),
+  customDateRange: z.custom<DateRange>(value => value instanceof Object && 'from' in value).optional(),
   transactionType: z.enum(['all', 'deposit', 'loan', 'repayment']),
   format: z.enum(['pdf', 'excel']),
 }).superRefine((data, ctx) => {
@@ -127,18 +127,20 @@ export default function ReportsPage() {
             }
 
             const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
-            const settingsSnap = await getDocs(query(collection(firestore, `users/${user.uid}/groupSettings`)));
-            const settingsData = settingsSnap.docs[0]?.data() as GroupSettings | undefined;
+            const settingsSnap = await getDoc(settingsDocRef);
+            const settingsData = settingsSnap.data() as GroupSettings | undefined;
 
             const totalDeposit = settingsData?.totalDeposit || 0;
             const totalLoan = settingsData?.totalLoan || 0;
             const totalRepayment = settingsData?.totalRepayment || 0;
-            const remainingFund = totalDeposit - (totalLoan - totalRepayment);
+            const totalInterest = settingsData?.totalInterest || 0;
+            const remainingFund = totalDeposit - (totalLoan - totalRepayment) + totalInterest;
 
              const summary = {
                 'Total Deposits (All Time)': `Rs. ${totalDeposit.toLocaleString('en-IN')}`,
                 'Total Loans (All Time)': `Rs. ${totalLoan.toLocaleString('en-IN')}`,
-                'Total Repayments (All Time)': `Rs. ${totalRepayment.toLocaleString('en-IN')}`,
+                'Total Principal Repaid (All Time)': `Rs. ${totalRepayment.toLocaleString('en-IN')}`,
+                'Total Interest Earned (All Time)': `Rs. ${totalInterest.toLocaleString('en-IN')}`,
                 'Remaining Fund (Current Balance)': `Rs. ${remainingFund.toLocaleString('en-IN')}`,
             };
 
@@ -146,8 +148,10 @@ export default function ReportsPage() {
                 'Member Name': members.find(m => m.id === tx.memberId)?.name || 'Unknown',
                 'Date': format(getTransactionDate(tx), 'yyyy-MM-dd'),
                 'Type': tx.type,
-                'Description': tx.description,
-                'Amount': tx.amount.toFixed(2),
+                'Description': tx.description || '-',
+                'Total Amount': tx.amount.toFixed(2),
+                'Principal': tx.type === 'repayment' ? (tx.principal || 0).toFixed(2) : '-',
+                'Interest': tx.type === 'repayment' ? (tx.interest || 0).toFixed(2) : '-',
             }));
 
 
@@ -167,7 +171,7 @@ export default function ReportsPage() {
                 });
                 
                 autoTable(doc, {
-                    head: [['Member Name', 'Date', 'Type', 'Description', 'Amount']],
+                    head: [['Member Name', 'Date', 'Type', 'Description', 'Total Amount', 'Principal', 'Interest']],
                     body: dataForExport.map(Object.values),
                     startY: (doc as any).lastAutoTable.finalY + 10,
                 });

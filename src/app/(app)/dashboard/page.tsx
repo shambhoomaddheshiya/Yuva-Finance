@@ -4,7 +4,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
-import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins } from 'lucide-react';
+import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins, LibraryBig } from 'lucide-react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -61,7 +61,8 @@ export default function DashboardPage() {
   const totalDeposit = settings?.totalDeposit || 0;
   const totalLoan = settings?.totalLoan || 0;
   const totalRepayment = settings?.totalRepayment || 0;
-  const remainingFund = totalDeposit - (totalLoan - totalRepayment);
+  const totalInterest = settings?.totalInterest || 0;
+  const remainingFund = totalDeposit - (totalLoan - totalRepayment) + totalInterest;
   const activeMembersCount = members ? members.filter(m => m.status === 'active').length : 0;
 
 
@@ -136,14 +137,14 @@ export default function DashboardPage() {
           value={settings ? `₹${totalLoan.toLocaleString('en-IN')}` : '...'}
           icon={Landmark}
           loading={settingsLoading}
-          description="Outstanding + Repaid"
+          description="Outstanding + Repaid Principal"
         />
-        <StatCard
-          title="Active Members"
-          value={members ? activeMembersCount : '...'}
-          icon={Users}
-          loading={membersLoading}
-          description={`${(members?.length || 0) - activeMembersCount} inactive`}
+         <StatCard
+          title="Total Interest Earned"
+          value={settings ? `₹${totalInterest.toLocaleString('en-IN')}` : '...'}
+          icon={LibraryBig}
+          loading={settingsLoading}
+          description="From loan repayments"
         />
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">

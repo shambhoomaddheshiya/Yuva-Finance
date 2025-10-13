@@ -1,8 +1,8 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
-import { useForm } from 'react-hook-form';
+import { useState, useMemo, useEffect } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2, HandCoins } from 'lucide-react';
@@ -84,10 +84,24 @@ const transactionSchema = z.object({
   amount: z.coerce.number().positive('Amount must be a positive number.'),
   date: z.date({ required_error: 'A date is required.' }),
   description: z.string().optional(),
+  principal: z.coerce.number().optional(),
+  interest: z.coerce.number().optional(),
+}).refine(data => {
+    if (data.type === 'repayment') {
+        return data.principal !== undefined && data.interest !== undefined && (data.principal + data.interest === data.amount);
+    }
+    return true;
+}, {
+    message: "For repayments, Principal + Interest must equal the Total Amount.",
+    path: ["amount"],
 });
 
-// For the edit form
-const editTransactionSchema = transactionSchema.omit({ memberId: true, type: true });
+
+// For the edit form - editing is complex so we'll simplify it
+const editTransactionSchema = z.object({
+  date: z.date({ required_error: 'A date is required.' }),
+  description: z.string().optional(),
+});
 
 
 function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
@@ -96,7 +110,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const { user } = useUser();
   const firestore = useFirestore();
-  const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
+  const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`), where('status', '==', 'active')) : null, [user, firestore]);
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
 
   const form = useForm<z.infer<typeof transactionSchema>>({
@@ -104,11 +118,25 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
     defaultValues: {
       memberId: '',
       amount: 0,
+      principal: 0,
+      interest: 0,
       description: '',
       date: new Date(),
       type: 'deposit'
     },
   });
+
+  const transactionType = useWatch({ control: form.control, name: 'type' });
+  const principal = useWatch({ control: form.control, name: 'principal' });
+  const interest = useWatch({ control: form.control, name: 'interest' });
+
+  useEffect(() => {
+    if (transactionType === 'repayment') {
+        const totalAmount = (principal || 0) + (interest || 0);
+        form.setValue('amount', totalAmount, { shouldValidate: true });
+    }
+  }, [principal, interest, transactionType, form]);
+
 
   const handleMemberChange = (memberId: string) => {
     const member = members?.find(m => m.id === memberId) || null;
@@ -138,11 +166,18 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         let newTotalDeposit = settingsData.totalDeposit || 0;
         let newTotalLoan = settingsData.totalLoan || 0;
         let newTotalRepayment = settingsData.totalRepayment || 0;
+        let newTotalInterest = settingsData.totalInterest || 0;
         let finalBalanceForTx = 0;
-
-        // 1. Create the new transaction
-        const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
         
+        const newTxData: Omit<Transaction, 'id'> = {
+            memberId: values.memberId,
+            type: values.type,
+            amount: values.amount,
+            date: Timestamp.fromDate(values.date),
+            description: values.description,
+            balance: 0 // Will be set below
+        };
+
         // 2. Update member and group totals based on transaction type
         switch (values.type) {
             case 'deposit':
@@ -158,29 +193,32 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                 batch.update(memberDocRef, { loanBalance: newMemberLoanBalance });
                 break;
             case 'repayment':
-                newMemberLoanBalance -= values.amount;
-                newTotalRepayment += values.amount;
+                const principalRepaid = values.principal || 0;
+                const interestPaid = values.interest || 0;
+                
+                newMemberLoanBalance -= principalRepaid;
+                newTotalRepayment += principalRepaid;
+                newTotalInterest += interestPaid;
                 finalBalanceForTx = newMemberLoanBalance;
+                
+                newTxData.principal = principalRepaid;
+                newTxData.interest = interestPaid;
+                
                 batch.update(memberDocRef, { loanBalance: newMemberLoanBalance });
                 break;
         }
 
-        const newTransaction: Omit<Transaction, 'id'> = {
-            memberId: values.memberId,
-            type: values.type,
-            amount: values.amount,
-            date: Timestamp.fromDate(values.date),
-            description: values.description,
-            balance: finalBalanceForTx,
-        };
-        batch.set(newTxRef, newTransaction);
+        newTxData.balance = finalBalanceForTx;
+        const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
+        batch.set(newTxRef, newTxData);
         
         // 3. Update group's total fund
-        const newRemainingFund = newTotalDeposit - (newTotalLoan - newTotalRepayment);
+        const newRemainingFund = newTotalDeposit - (newTotalLoan - newTotalRepayment) + newTotalInterest;
         batch.update(settingsDocRef, { 
             totalDeposit: newTotalDeposit,
             totalLoan: newTotalLoan,
             totalRepayment: newTotalRepayment,
+            totalInterest: newTotalInterest,
             totalFund: newRemainingFund // totalFund is used as remainingFund
         });
         
@@ -220,7 +258,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {members && members.filter(m => m.status === 'active').map((m) => (
+                  {members?.map((m) => (
                     <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -261,17 +299,55 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
             </FormItem>
           )}
         />
-        <FormField
-          control={form.control}
-          name="amount"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Amount</FormLabel>
-              <FormControl><Input type="number" placeholder="2000" {...field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {transactionType === 'repayment' ? (
+            <div className="grid grid-cols-2 gap-4">
+                <FormField
+                    control={form.control}
+                    name="principal"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Principal Amount</FormLabel>
+                            <FormControl><Input type="number" placeholder="10000" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                <FormField
+                    control={form.control}
+                    name="interest"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Interest Paid</FormLabel>
+                            <FormControl><Input type="number" placeholder="200" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                 <FormField
+                    control={form.control}
+                    name="amount"
+                    render={({ field }) => (
+                        <FormItem className="col-span-2">
+                        <FormLabel>Total Amount Repaid</FormLabel>
+                        <FormControl><Input type="number" {...field} readOnly className="bg-muted" /></FormControl>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                />
+            </div>
+        ) : (
+            <FormField
+                control={form.control}
+                name="amount"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Amount</FormLabel>
+                    <FormControl><Input type="number" placeholder="2000" {...field} /></FormControl>
+                    <FormMessage />
+                    </FormItem>
+                )}
+            />
+        )}
         <FormField
           control={form.control}
           name="date"
@@ -349,7 +425,6 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
   const form = useForm<z.infer<typeof editTransactionSchema>>({
     resolver: zodResolver(editTransactionSchema),
     defaultValues: {
-      amount: transaction.amount,
       date: getDateFromTransaction(transaction),
       description: transaction.description || '',
     },
@@ -359,61 +434,25 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
     if (!user || !firestore) return;
     setIsLoading(true);
     
-    // Editing a transaction is complex due to its effect on subsequent balances.
-    // The simplest, safest approach is to prevent editing and guide the user to delete and re-create.
-    // A full implementation would require recalculating all subsequent transactions for the member.
-    // For this app, we will prevent editing amount to avoid complex recalculations.
-    if (values.amount !== transaction.amount) {
-        toast({
-            variant: "destructive",
-            title: "Edit Not Allowed",
-            description: "Changing the amount of a past transaction is not supported. Please delete this transaction and create a new one with the correct amount."
-        });
-        setIsLoading(false);
-        return;
-    }
-    
-    try {
-        const batch = writeBatch(firestore);
-        const txRef = doc(firestore, `users/${user.uid}/transactions`, transaction.id);
-
-        batch.update(txRef, {
-            date: Timestamp.fromDate(values.date),
-            description: values.description || '',
-        });
-        
-        await batch.commit();
-
-        toast({
-            title: 'Success!',
-            description: 'Transaction details have been updated.',
-        });
-        onOpenChange(false);
-    } catch (error: any) {
-        toast({
-            variant: 'destructive',
-            title: 'Update Failed',
-            description: error.message || 'There was a problem updating the transaction.',
-        });
-    } finally {
-        setIsLoading(false);
-    }
+    // Editing a transaction is complex due to its effect on subsequent balances and group totals.
+    // The safest approach is to prevent editing and guide the user to delete and re-create.
+    toast({
+        variant: "destructive",
+        title: "Editing Not Supported",
+        description: "To maintain accurate financial records, editing past transactions is not allowed. Please delete this transaction and create a new one with the correct details."
+    });
+    setIsLoading(false);
+    return;
   }
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        <FormField
-          control={form.control}
-          name="amount"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Amount (Editing disabled)</FormLabel>
-              <FormControl><Input type="number" placeholder="2000" {...field} disabled /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+            <p className="text-sm text-yellow-800">
+                Editing past transactions is disabled to ensure financial integrity. If you need to make a correction, please delete this record and create a new one.
+            </p>
+        </div>
         <FormField
           control={form.control}
           name="date"
@@ -429,24 +468,13 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
                         'w-[240px] pl-3 text-left font-normal',
                         !field.value && 'text-muted-foreground'
                       )}
+                      disabled
                     >
                       {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
                       <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                     </Button>
                   </FormControl>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    captionLayout="dropdown-buttons"
-                    fromYear={getYear(new Date()) - 10}
-                    toYear={getYear(new Date())}
-                    selected={field.value}
-                    onSelect={field.onChange}
-                    disabled={(date) => date > new Date() || date < new Date('1900-01-01')}
-                    initialFocus
-                  />
-                </PopoverContent>
               </Popover>
               <FormMessage />
             </FormItem>
@@ -458,15 +486,14 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
           render={({ field }) => (
             <FormItem>
               <FormLabel>Description</FormLabel>
-              <FormControl><Textarea placeholder="Description..." {...field} /></FormControl>
+              <FormControl><Textarea placeholder="Description..." {...field} disabled /></FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
         <DialogFooter>
-          <Button type="submit" disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save Changes
+          <Button type="submit" disabled={true}>
+            Save Changes (Disabled)
           </Button>
         </DialogFooter>
       </form>
@@ -562,22 +589,28 @@ export default function TransactionsPage() {
             case 'deposit':
             case 'loan':
             case 'repayment':
-                return tx.type === filter;
+                if(filter !== tx.type) return false;
+                break;
             case 'monthly':
-                return txYear === parseInt(selectedYear) && txMonth === parseInt(selectedMonth);
+                if (txYear !== parseInt(selectedYear) || txMonth !== parseInt(selectedMonth)) return false;
+                break;
             case 'yearly':
-                return txYear === parseInt(selectedYear);
+                if(txYear !== parseInt(selectedYear)) return false;
+                break;
             case 'custom':
                 if (dateRange?.from && dateRange?.to) {
                     const fromDate = dateRange.from;
                     const toDate = dateRange.to;
-                    return txDate >= fromDate && txDate <= toDate;
+                    if (txDate < fromDate || txDate > toDate) return false;
+                } else {
+                    return true;
                 }
-                return true;
+                break;
             case 'all':
             default:
-                return true;
+                break;
         }
+        return true;
     });
 
     if (!searchQuery) return intermediateList;
@@ -624,7 +657,7 @@ export default function TransactionsPage() {
         const memberData = memberSnap.data() as Member;
         const settingsData = settingsSnap.data() as GroupSettings;
 
-        let { amount, type } = selectedTransaction;
+        let { amount, type, principal, interest } = selectedTransaction;
 
         // Revert member and group totals
         let newMemberBalance = memberData.currentBalance;
@@ -632,6 +665,7 @@ export default function TransactionsPage() {
         let newTotalDeposit = settingsData.totalDeposit || 0;
         let newTotalLoan = settingsData.totalLoan || 0;
         let newTotalRepayment = settingsData.totalRepayment || 0;
+        let newTotalInterest = settingsData.totalInterest || 0;
         
         switch (type) {
             case 'deposit':
@@ -645,8 +679,9 @@ export default function TransactionsPage() {
                 batch.update(memberRef, { loanBalance: newMemberLoanBalance });
                 break;
             case 'repayment':
-                newMemberLoanBalance += amount;
-                newTotalRepayment -= amount;
+                newMemberLoanBalance += (principal || 0);
+                newTotalRepayment -= (principal || 0);
+                newTotalInterest -= (interest || 0);
                 batch.update(memberRef, { loanBalance: newMemberLoanBalance });
                 break;
         }
@@ -655,11 +690,12 @@ export default function TransactionsPage() {
         batch.delete(txRef);
         
         // Recalculate and update group's remaining fund
-        const newRemainingFund = newTotalDeposit - (newTotalLoan - newTotalRepayment);
+        const newRemainingFund = newTotalDeposit - (newTotalLoan - newTotalRepayment) + newTotalInterest;
         batch.update(settingsRef, { 
             totalDeposit: newTotalDeposit,
             totalLoan: newTotalLoan,
             totalRepayment: newTotalRepayment,
+            totalInterest: newTotalInterest,
             totalFund: newRemainingFund,
         });
 
@@ -694,7 +730,7 @@ export default function TransactionsPage() {
               Add Transaction
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="font-headline">Record New Transaction</DialogTitle>
               <DialogDescription>
