@@ -57,11 +57,11 @@ export default function DashboardPage() {
   
   const loading = membersLoading || txLoading;
 
-  const { totalDeposit, totalLoan, totalRepayment, totalInterest, remainingFund } = useMemo(() => {
+  const { totalDeposits, totalLoan, totalRepayment, totalInterest, remainingFund } = useMemo(() => {
     if (!transactions) {
-      return { totalDeposit: 0, totalLoan: 0, totalRepayment: 0, totalInterest: 0, remainingFund: 0 };
+      return { totalDeposits: 0, totalLoan: 0, totalRepayment: 0, totalInterest: 0, remainingFund: 0 };
     }
-    const deposits = transactions
+    const memberDeposits = transactions
       .filter(t => t.type === 'deposit')
       .reduce((sum, t) => sum + t.amount, 0);
 
@@ -77,16 +77,18 @@ export default function DashboardPage() {
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.interest || 0), 0);
 
-    const totalDeposit = deposits + totalInterest;
+    // Total Deposits card should show all money contributed by members + interest earned
+    const totalDeposits = memberDeposits + totalInterest;
 
-    const remainingFund = totalDeposit - (totalLoan - totalRepayment);
+    // Remaining fund is total cash in (deposits + interest + repayments) minus total cash out (loans)
+    const remainingFund = (memberDeposits + totalInterest + totalRepayment) - totalLoan;
     
-    return { totalDeposit, totalLoan, totalRepayment, totalInterest, remainingFund };
+    return { totalDeposits, totalLoan, totalRepayment, totalInterest, remainingFund };
   }, [transactions]);
 
 
   const chartData = [
-    { name: 'Deposits', total: totalDeposit, fill: 'hsl(var(--primary))' },
+    { name: 'Deposits', total: totalDeposits, fill: 'hsl(var(--primary))' },
     { name: 'Loans', total: totalLoan, fill: 'hsl(var(--destructive))' },
   ];
   
@@ -146,7 +148,7 @@ export default function DashboardPage() {
         />
          <StatCard
           title="Total Deposits"
-          value={loading ? '...' : `₹${totalDeposit.toLocaleString('en-IN')}`}
+          value={loading ? '...' : `₹${totalDeposits.toLocaleString('en-IN')}`}
           icon={PiggyBank}
           loading={loading}
           description="From all members"
