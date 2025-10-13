@@ -9,6 +9,7 @@ import {
   Settings,
   HandCoins,
   FileText,
+  LibraryBig,
 } from 'lucide-react';
 
 import {
@@ -27,6 +28,7 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/members', label: 'Members', icon: Users },
   { href: '/transactions', label: 'Transactions', icon: ArrowRightLeft },
+  { href: '/summary', label: 'Summary', icon: LibraryBig },
   { href: '/reports', label: 'Reports', icon: FileText },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
