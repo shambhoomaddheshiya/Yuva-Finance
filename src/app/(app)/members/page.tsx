@@ -635,22 +635,16 @@ export default function MembersPage() {
                   </TableRow>
                 ))
               ) : filteredMembers && filteredMembers.length > 0 ? (
-                filteredMembers.map((member, index) => (
+                filteredMembers.map((member) => (
                   <TableRow key={member.id} className={cn(member.status === 'inactive' && 'bg-muted/50 text-muted-foreground')}>
                     <TableCell className="font-medium">
-                      <div className="flex items-center gap-3">
-                         <Avatar>
-                          <AvatarImage src={PlaceHolderImages[index % PlaceHolderImages.length]?.imageUrl} data-ai-hint="person portrait" />
-                          <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div className='flex flex-col'>
-                            <span>{member.name}</span>
-                            {member.status === 'active' ? (
-                                <Badge variant="secondary" className='w-fit bg-green-100 text-green-800'>Active</Badge>
-                            ) : (
-                                <Badge variant="secondary" className='w-fit bg-red-100 text-red-800'>Inactive</Badge>
-                            )}
-                        </div>
+                      <div className="flex flex-col">
+                        <span>{member.name}</span>
+                        {member.status === 'active' ? (
+                            <Badge variant="secondary" className='w-fit bg-green-100 text-green-800'>Active</Badge>
+                        ) : (
+                            <Badge variant="secondary" className='w-fit bg-red-100 text-red-800'>Inactive</Badge>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>{member.id}</TableCell>
