@@ -19,15 +19,18 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
-import { DateRange } from 'react-day-picker';
-import { DateRangePicker } from '@/components/date-range-picker';
+import { CalendarIcon } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 
 
 const reportSchema = z.object({
   reportType: z.enum(['monthly', 'yearly', 'all', 'custom']),
   year: z.string().optional(),
   month: z.string().optional(),
-  customDateRange: z.custom<DateRange>(value => value instanceof Object && 'from' in value).optional(),
+  startDate: z.date().optional(),
+  endDate: z.date().optional(),
   transactionType: z.enum(['all', 'deposit', 'loan', 'repayment']),
   format: z.enum(['pdf', 'excel']),
 }).superRefine((data, ctx) => {
@@ -37,8 +40,11 @@ const reportSchema = z.object({
     if (data.reportType === 'yearly' && !data.year) {
          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Year is required for yearly reports.", path: ['reportType']});
     }
-    if (data.reportType === 'custom' && !data.customDateRange?.from) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A date range is required for custom reports.", path: ['customDateRange']});
+    if (data.reportType === 'custom' && !data.startDate) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Start date is required for custom reports.", path: ['startDate']});
+    }
+    if (data.reportType === 'custom' && !data.endDate) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "End date is required for custom reports.", path: ['endDate']});
     }
 });
 
@@ -76,7 +82,7 @@ export default function ReportsPage() {
         setIsLoading(true);
 
         try {
-            const { reportType, year, month, customDateRange, transactionType, format: fileFormat } = values;
+            const { reportType, year, month, startDate: customStartDate, endDate: customEndDate, transactionType, format: fileFormat } = values;
             let startDate: Date | null = null;
             let endDate: Date | null = null;
             let reportTitle: string = 'All Transactions Report';
@@ -92,9 +98,9 @@ export default function ReportsPage() {
                 startDate = startOfYear(new Date(selectedYear, 0));
                 endDate = endOfYear(new Date(selectedYear, 0));
                 reportTitle = `Yearly Report: ${year}`;
-            } else if (reportType === 'custom' && customDateRange?.from) {
-                startDate = customDateRange.from;
-                endDate = customDateRange.to || customDateRange.from;
+            } else if (reportType === 'custom' && customStartDate) {
+                startDate = customStartDate;
+                endDate = customEndDate || customStartDate;
                 reportTitle = `Custom Report: ${format(startDate, 'dd/MM/yy')} - ${format(endDate, 'dd/MM/yy')}`;
             }
 
@@ -297,17 +303,82 @@ export default function ReportsPage() {
                             )}
 
                              {reportType === 'custom' && (
-                                <FormField
-                                    control={form.control}
-                                    name="customDateRange"
-                                    render={({ field }) => (
-                                        <FormItem className="flex flex-col">
-                                            <FormLabel>Date range</FormLabel>
-                                            <DateRangePicker value={field.value} onChange={field.onChange} />
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
+                                <div className="flex flex-col sm:flex-row gap-4">
+                                    <FormField
+                                        control={form.control}
+                                        name="startDate"
+                                        render={({ field }) => (
+                                            <FormItem className="flex flex-col flex-1">
+                                                <FormLabel>Start Date</FormLabel>
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <FormControl>
+                                                            <Button
+                                                                variant="outline"
+                                                                className={cn(
+                                                                    "w-full justify-start text-left font-normal",
+                                                                    !field.value && "text-muted-foreground"
+                                                                )}
+                                                            >
+                                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                                {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
+                                                            </Button>
+                                                        </FormControl>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-auto p-0" align="start">
+                                                        <Calendar
+                                                            mode="single"
+                                                            selected={field.value}
+                                                            onSelect={field.onChange}
+                                                            captionLayout="dropdown-buttons"
+                                                            fromYear={getYear(new Date()) - 10}
+                                                            toYear={getYear(new Date())}
+                                                            initialFocus
+                                                        />
+                                                    </PopoverContent>
+                                                </Popover>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                     <FormField
+                                        control={form.control}
+                                        name="endDate"
+                                        render={({ field }) => (
+                                            <FormItem className="flex flex-col flex-1">
+                                                <FormLabel>End Date</FormLabel>
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <FormControl>
+                                                            <Button
+                                                                variant="outline"
+                                                                className={cn(
+                                                                    "w-full justify-start text-left font-normal",
+                                                                    !field.value && "text-muted-foreground"
+                                                                )}
+                                                            >
+                                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                                {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
+                                                            </Button>
+                                                        </FormControl>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-auto p-0" align="start">
+                                                        <Calendar
+                                                            mode="single"
+                                                            selected={field.value}
+                                                            onSelect={field.onChange}
+                                                            captionLayout="dropdown-buttons"
+                                                            fromYear={getYear(new Date()) - 10}
+                                                            toYear={getYear(new Date())}
+                                                            initialFocus
+                                                        />
+                                                    </PopoverContent>
+                                                </Popover>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
                             )}
 
                              <FormField

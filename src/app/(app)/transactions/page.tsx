@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2, HandCoins } from 'lucide-react';
 import { collection, doc, getDoc, query, writeBatch, where, getDocs, deleteDoc, Timestamp, updateDoc } from 'firebase/firestore';
-import { format, getYear } from 'date-fns';
+import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useToast } from '@/hooks/use-toast';
@@ -74,7 +74,6 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { DateRangePicker } from '@/components/date-range-picker';
 import { DateRange } from 'react-day-picker';
 
 const transactionObjectSchema = z.object({
@@ -102,12 +101,13 @@ const transactionSchema = transactionObjectSchema.refine(data => {
 });
 
 // For the edit form - editing is complex so we'll simplify it
-const editTransactionSchema = transactionObjectSchema.omit({ memberId: true, type: true }).refine(data => {
-    // Since type is omitted, we need to handle this conditionally.
-    // In this form, type is fixed to 'repayment', so we apply the same logic.
+const editTransactionObjectSchema = transactionObjectSchema.omit({ memberId: true, type: true });
+
+const editTransactionSchema = editTransactionObjectSchema.refine(data => {
+    // This refine is specifically for repayment edits.
+    // The form logic will determine if this schema should be used.
     const principal = data.principal || 0;
     const interest = data.interest || 0;
-    // This check should only apply if it is a repayment, but since this schema is only for editing repayments...
     return principal + interest === data.amount;
 }, {
     message: "For repayments, Principal + Interest must equal the Total Amount.",
@@ -432,9 +432,10 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
     return new Date(tx.date as string);
   }
 
+  const isRepayment = transaction.type === 'repayment';
 
-  const form = useForm<z.infer<typeof editTransactionSchema>>({
-    resolver: zodResolver(editTransactionSchema),
+  const form = useForm<z.infer<typeof editTransactionObjectSchema>>({
+    resolver: zodResolver(isRepayment ? editTransactionSchema : editTransactionObjectSchema),
     defaultValues: {
       date: getDateFromTransaction(transaction),
       description: transaction.description || '',
@@ -444,18 +445,17 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
     },
   });
   
-  const transactionType = transaction.type;
   const principal = useWatch({ control: form.control, name: 'principal' });
   const interest = useWatch({ control: form.control, name: 'interest' });
 
   useEffect(() => {
-    if (transactionType === 'repayment') {
+    if (isRepayment) {
         const totalAmount = Number(principal || 0) + Number(interest || 0);
         form.setValue('amount', totalAmount, { shouldValidate: true });
     }
-  }, [principal, interest, transactionType, form]);
+  }, [principal, interest, isRepayment, form]);
 
-  async function onSubmit(values: z.infer<typeof editTransactionSchema>) {
+  async function onSubmit(values: z.infer<typeof editTransactionObjectSchema>) {
     if (!user || !firestore) return;
     setIsLoading(true);
 
@@ -577,7 +577,7 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-         {transaction.type === 'repayment' ? (
+         {isRepayment ? (
             <div className="grid grid-cols-2 gap-4">
                 <FormField
                     control={form.control}
@@ -686,6 +686,90 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
   )
 }
 
+function DateFilterControls({ filter, selectedYear, setSelectedYear, selectedMonth, setSelectedMonth }) {
+    const years = Array.from({ length: 10 }, (_, i) => getYear(new Date()) - i);
+    const months = Array.from({ length: 12 }, (_, i) => ({
+        value: String(i),
+        label: format(new Date(0, i), 'MMMM'),
+    }));
+    const [startDate, setStartDate] = useState<Date | undefined>();
+    const [endDate, setEndDate] = useState<Date | undefined>();
+
+
+    if (filter !== 'monthly' && filter !== 'yearly' && filter !== 'custom') return null;
+
+    if (filter === 'custom') {
+        return (
+            <div className="flex items-center gap-2">
+                 <Popover>
+                    <PopoverTrigger asChild>
+                        <Button
+                            variant={"outline"}
+                            className={cn(
+                                "w-[150px] justify-start text-left font-normal",
+                                !startDate && "text-muted-foreground"
+                            )}
+                        >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {startDate ? format(startDate, "PPP") : <span>Start Date</span>}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                        <Calendar
+                            mode="single"
+                            selected={startDate}
+                            onSelect={setStartDate}
+                            initialFocus
+                        />
+                    </PopoverContent>
+                </Popover>
+                 <Popover>
+                    <PopoverTrigger asChild>
+                        <Button
+                            variant={"outline"}
+                            className={cn(
+                                "w-[150px] justify-start text-left font-normal",
+                                !endDate && "text-muted-foreground"
+                            )}
+                        >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {endDate ? format(endDate, "PPP") : <span>End Date</span>}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                        <Calendar
+                            mode="single"
+                            selected={endDate}
+                            onSelect={setEndDate}
+                            initialFocus
+                        />
+                    </PopoverContent>
+                </Popover>
+            </div>
+        )
+    }
+
+    return (
+        <div className="flex items-center gap-2">
+            <Select onValueChange={setSelectedYear} value={selectedYear}>
+                <SelectTrigger className="w-[120px]"><SelectValue placeholder="Year" /></SelectTrigger>
+                <SelectContent>
+                    {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                </SelectContent>
+            </Select>
+            {filter === 'monthly' && (
+                <Select onValueChange={setSelectedMonth} value={selectedMonth}>
+                   <SelectTrigger className="w-[140px]"><SelectValue placeholder="Month" /></SelectTrigger>
+                    <SelectContent>
+                        {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+            )}
+        </div>
+    );
+}
+
+
 export default function TransactionsPage() {
   const { user } = useUser();
   const { toast } = useToast();
@@ -706,15 +790,9 @@ export default function TransactionsPage() {
   const [filter, setFilter] = useState('all');
   const [selectedYear, setSelectedYear] = useState<string>(String(getYear(new Date())));
   const [selectedMonth, setSelectedMonth] = useState<string>(String(new Date().getMonth()));
-  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
 
   const loading = txLoading || membersLoading;
-
-  const years = Array.from({ length: 10 }, (_, i) => getYear(new Date()) - i);
-  const months = Array.from({ length: 12 }, (_, i) => ({
-      value: String(i),
-      label: format(new Date(0, i), 'MMMM'),
-  }));
   
   const getTransactionDate = (tx: Transaction) => {
     if (tx.date instanceof Timestamp) {
@@ -783,12 +861,12 @@ export default function TransactionsPage() {
                 if(txYear !== parseInt(selectedYear)) return false;
                 break;
             case 'custom':
-                if (dateRange?.from && dateRange?.to) {
-                    const fromDate = dateRange.from;
-                    const toDate = dateRange.to;
+                if (customDateRange?.from && customDateRange?.to) {
+                    const fromDate = startOfMonth(customDateRange.from);
+                    const toDate = endOfMonth(customDateRange.to);
                     if (txDate < fromDate || txDate > toDate) return false;
-                } else if(dateRange?.from) {
-                    if (txDate < dateRange.from) return false;
+                } else if(customDateRange?.from) {
+                     if (txDate < customDateRange.from) return false;
                 }
                 break;
             case 'all':
@@ -811,7 +889,7 @@ export default function TransactionsPage() {
         (tx.description && tx.description.toLowerCase().includes(lowercasedQuery))
       );
     });
-  }, [transactions, members, searchQuery, filter, selectedYear, selectedMonth, dateRange]);
+  }, [transactions, members, searchQuery, filter, selectedYear, selectedMonth, customDateRange]);
 
   const handleEdit = (transaction: Transaction) => {
     setSelectedTransaction(transaction);
@@ -954,30 +1032,15 @@ export default function TransactionsPage() {
                 <div className="flex items-center space-x-2"><RadioGroupItem value="repayment" id="repayment" /><Label htmlFor="repayment">Repayments</Label></div>
                 <div className="flex items-center space-x-2"><RadioGroupItem value="monthly" id="monthly" /><Label htmlFor="monthly">Monthly</Label></div>
                 <div className="flex items-center space-x-2"><RadioGroupItem value="yearly" id="yearly" /><Label htmlFor="yearly">Yearly</Label></div>
-                <div className="flex items-center space-x-2"><RadioGroupItem value="custom" id="custom" /><Label htmlFor="custom">Custom</Label></div>
               </RadioGroup>
               
-              {(filter === 'monthly' || filter === 'yearly') && (
-                <div className="flex items-center gap-2">
-                    <Select onValueChange={setSelectedYear} value={selectedYear}>
-                        <SelectTrigger className="w-[120px]"><SelectValue placeholder="Year" /></SelectTrigger>
-                        <SelectContent>
-                            {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                    {filter === 'monthly' && (
-                        <Select onValueChange={setSelectedMonth} value={selectedMonth}>
-                           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Month" /></SelectTrigger>
-                            <SelectContent>
-                                {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    )}
-                </div>
-              )}
-               {filter === 'custom' && (
-                  <DateRangePicker value={dateRange} onChange={setDateRange} />
-              )}
+              <DateFilterControls 
+                 filter={filter}
+                 selectedYear={selectedYear}
+                 setSelectedYear={setSelectedYear}
+                 selectedMonth={selectedMonth}
+                 setSelectedMonth={setSelectedMonth}
+              />
             </div>
           </div>
         </CardHeader>
