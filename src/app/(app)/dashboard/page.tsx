@@ -58,22 +58,26 @@ export default function DashboardPage() {
   const loading = membersLoading || txLoading;
 
   const { totalDeposits, totalLoan, totalRepayment, totalInterest, remainingFund } = useMemo(() => {
-    if (!transactions) {
+    if (!transactions || !members) {
       return { totalDeposits: 0, totalLoan: 0, totalRepayment: 0, totalInterest: 0, remainingFund: 0 };
     }
-    const memberDeposits = transactions
+    
+    const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
+    const activeTransactions = transactions.filter(t => activeMemberIds.has(t.memberId));
+
+    const memberDeposits = activeTransactions
       .filter(t => t.type === 'deposit')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalLoan = transactions
+    const totalLoan = activeTransactions
       .filter(t => t.type === 'loan')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalRepayment = transactions
+    const totalRepayment = activeTransactions
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.principal || 0), 0);
     
-    const totalInterest = transactions
+    const totalInterest = activeTransactions
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.interest || 0), 0);
 
@@ -84,7 +88,7 @@ export default function DashboardPage() {
     const remainingFund = (memberDeposits + totalInterest + totalRepayment) - totalLoan;
     
     return { totalDeposits, totalLoan, totalRepayment, totalInterest, remainingFund };
-  }, [transactions]);
+  }, [transactions, members]);
 
 
   const chartData = [
@@ -151,21 +155,21 @@ export default function DashboardPage() {
           value={loading ? '...' : `₹${totalDeposits.toLocaleString('en-IN')}`}
           icon={PiggyBank}
           loading={loading}
-          description="From all members"
+          description="From active members"
         />
         <StatCard
           title="Total Loan Disbursed"
           value={loading ? '...' : `₹${totalLoan.toLocaleString('en-IN')}`}
           icon={Landmark}
           loading={loading}
-          description="Outstanding + Repaid Principal"
+          description="To active members"
         />
          <StatCard
           title="Total Interest Earned"
           value={loading ? '...' : `₹${totalInterest.toLocaleString('en-IN')}`}
           icon={LibraryBig}
           loading={loading}
-          description="From loan repayments"
+          description="From active members"
         />
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">

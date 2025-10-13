@@ -96,6 +96,12 @@ export default function ReportsPage() {
             let reportTitle: string = 'Group Transactions Report';
             let memberName: string | undefined;
 
+            const allTransactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`));
+            const allTransactionsSnapshot = await getDocs(allTransactionsQuery);
+            let allTransactions = allTransactionsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction));
+            
+            const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
+            
             if (exportScope === 'member' && memberId) {
                 memberName = members.find(m => m.id === memberId)?.name;
                 reportTitle = `${memberName}'s Transaction Report`;
@@ -118,15 +124,17 @@ export default function ReportsPage() {
                 reportTitle = `${reportTitle}: ${format(startDate, 'dd/MM/yy')} - ${format(endDate, 'dd/MM/yy')}`;
             }
 
-            const allTransactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`));
-            const allTransactionsSnapshot = await getDocs(allTransactionsQuery);
-            let transactionsForReport = allTransactionsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction));
+            let transactionsForReport = allTransactions;
             
-            // Filter transactions for the actual report body
+            // Filter by scope (all active or specific member)
             if (exportScope === 'member' && memberId) {
                 transactionsForReport = transactionsForReport.filter(tx => tx.memberId === memberId);
+            } else if (exportScope === 'all') {
+                transactionsForReport = transactionsForReport.filter(tx => activeMemberIds.has(tx.memberId));
             }
 
+
+            // Filter by date range
             if (startDate && endDate) {
                  transactionsForReport = transactionsForReport.filter(tx => {
                     const txDate = getTransactionDate(tx);
@@ -134,6 +142,7 @@ export default function ReportsPage() {
                 });
             }
             
+            // Filter by transaction type
             if (transactionType !== 'all') {
                 if (transactionType === 'deposits-repayments') {
                     transactionsForReport = transactionsForReport.filter(tx => tx.type === 'deposit' || tx.type === 'repayment');
@@ -269,7 +278,7 @@ export default function ReportsPage() {
                                             >
                                                 <FormItem className="flex items-center space-x-3 space-y-0">
                                                     <FormControl><RadioGroupItem value="all" /></FormControl>
-                                                    <FormLabel className="font-normal">All Members</FormLabel>
+                                                    <FormLabel className="font-normal">All Active Members</FormLabel>
                                                 </FormItem>
                                                 <FormItem className="flex items-center space-x-3 space-y-0">
                                                     <FormControl><RadioGroupItem value="member" /></FormControl>
