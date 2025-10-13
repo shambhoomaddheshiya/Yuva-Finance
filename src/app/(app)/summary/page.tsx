@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -104,6 +103,7 @@ export default function SummaryPage() {
   const monthlySummary = useMemo(() => {
     const initialSummary = {
         totalInterest: 0,
+        interestPayers: [] as MemberAmount[],
         totalDeposit: 0,
         depositMembers: [] as MemberAmount[],
         totalLoan: 0,
@@ -127,12 +127,12 @@ export default function SummaryPage() {
     
     const memberMap = new Map(members.map(m => [m.id, m.name]));
 
-    const memberAggregates = new Map<string, { deposit: number; loan: number; repayment: number, interest: number }>();
+    const memberAggregates = new Map<string, { deposit: number; loan: number; principal: number, interest: number }>();
 
     for (const tx of filteredTransactions) {
       const memberId = tx.memberId;
       if (!memberAggregates.has(memberId)) {
-        memberAggregates.set(memberId, { deposit: 0, loan: 0, repayment: 0, interest: 0 });
+        memberAggregates.set(memberId, { deposit: 0, loan: 0, principal: 0, interest: 0 });
       }
       const memberData = memberAggregates.get(memberId)!;
 
@@ -144,13 +144,14 @@ export default function SummaryPage() {
           memberData.loan += tx.amount;
           break;
         case 'repayment':
-          memberData.repayment += tx.amount;
+          memberData.principal += (tx.principal || 0);
           memberData.interest += (tx.interest || 0);
           break;
       }
     }
     
     let totalInterest = 0;
+    const interestPayers: MemberAmount[] = [];
     let totalDeposit = 0;
     const depositMembers: MemberAmount[] = [];
     let totalLoan = 0;
@@ -160,8 +161,11 @@ export default function SummaryPage() {
 
     for (const [memberId, data] of memberAggregates.entries()) {
         const name = memberMap.get(memberId) || 'Unknown';
-        totalInterest += data.interest;
-
+        
+        if (data.interest > 0) {
+            totalInterest += data.interest;
+            interestPayers.push({ name, amount: data.interest });
+        }
         if (data.deposit > 0) {
             totalDeposit += data.deposit;
             depositMembers.push({ name, amount: data.deposit });
@@ -170,14 +174,15 @@ export default function SummaryPage() {
             totalLoan += data.loan;
             loanTakers.push({ name, amount: data.loan });
         }
-        if (data.repayment > 0) {
-            totalRepayment += data.repayment;
-            repaymentMembers.push({ name, amount: data.repayment });
+        if (data.principal > 0) {
+            totalRepayment += data.principal;
+            repaymentMembers.push({ name, amount: data.principal });
         }
     }
 
     return { 
       totalInterest, 
+      interestPayers,
       totalDeposit, 
       depositMembers,
       totalLoan,
@@ -227,7 +232,7 @@ export default function SummaryPage() {
               title="Interest Earned"
               icon={Banknote}
               totalAmount={monthlySummary.totalInterest}
-              members={monthlySummary.repaymentMembers}
+              members={monthlySummary.interestPayers}
               loading={loading}
               membersLabel="From Members"
            />
@@ -248,7 +253,7 @@ export default function SummaryPage() {
               membersLabel="To Members"
            />
            <SummaryDetailCard
-              title="Loans Repaid"
+              title="Loans Repaid (Principal)"
               icon={HandCoins}
               totalAmount={monthlySummary.totalRepayment}
               members={monthlySummary.repaymentMembers}
@@ -260,6 +265,7 @@ export default function SummaryPage() {
     </div>
   );
 }
+
 
 
 
