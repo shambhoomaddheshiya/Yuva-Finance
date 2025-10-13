@@ -35,11 +35,9 @@ function SummaryDetailCard({
 }) {
   return (
     <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-headline">{title}</CardTitle>
-          <Icon className="h-5 w-5 text-muted-foreground" />
-        </div>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+        <CardTitle className="text-lg font-headline">{title}</CardTitle>
+        <Icon className="h-5 w-5 text-muted-foreground" />
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -48,25 +46,27 @@ function SummaryDetailCard({
             <Skeleton className="h-6 w-1/2" />
           </div>
         ) : (
-          <div className="space-y-2">
-            <div className="text-2xl font-bold font-headline">
+          <div className="flex justify-between items-start">
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                {membersLabel}: <span className="font-semibold">{memberCount}</span>
+              </p>
+              {memberNames.length > 0 && (
+                <Accordion type="single" collapsible className="w-full max-w-xs">
+                  <AccordionItem value="item-1">
+                    <AccordionTrigger className="text-sm py-2">View Members</AccordionTrigger>
+                    <AccordionContent>
+                      <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
+                        {memberNames.map((name, index) => <li key={index}>{name}</li>)}
+                      </ul>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              )}
+            </div>
+            <div className="text-2xl font-bold font-headline text-right">
               ₹{amount.toLocaleString('en-IN')}
             </div>
-            <p className="text-sm text-muted-foreground">
-              {membersLabel}: <span className="font-semibold">{memberCount}</span>
-            </p>
-            {memberNames.length > 0 && (
-              <Accordion type="single" collapsible className="w-full">
-                <AccordionItem value="item-1">
-                  <AccordionTrigger className="text-sm py-2">View Members</AccordionTrigger>
-                  <AccordionContent>
-                    <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
-                      {memberNames.map((name, index) => <li key={index}>{name}</li>)}
-                    </ul>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            )}
           </div>
         )}
       </CardContent>
@@ -181,7 +181,7 @@ export default function SummaryPage() {
           </CardTitle>
           <CardDescription>An overview of your group's financial activity for the selected month.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <CardContent className="grid gap-4 md:grid-cols-2">
            <SummaryDetailCard
               title="Interest Earned"
               icon={Banknote}
@@ -227,4 +227,5 @@ export default function SummaryPage() {
     </div>
   );
 }
+
 
