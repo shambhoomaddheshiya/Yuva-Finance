@@ -31,7 +31,7 @@ const reportSchema = z.object({
   month: z.string().optional(),
   startDate: z.date().optional(),
   endDate: z.date().optional(),
-  transactionType: z.enum(['all', 'deposit', 'loan', 'repayment']),
+  transactionType: z.enum(['all', 'deposit', 'loan', 'repayment', 'deposits-repayments']),
   format: z.enum(['pdf', 'excel']),
   exportScope: z.enum(['all', 'member']),
   memberId: z.string().optional(),
@@ -135,13 +135,17 @@ export default function ReportsPage() {
             }
             
             if (transactionType !== 'all') {
-                transactionsForReport = transactionsForReport.filter(tx => tx.type === transactionType);
+                if (transactionType === 'deposits-repayments') {
+                    transactionsForReport = transactionsForReport.filter(tx => tx.type === 'deposit' || tx.type === 'repayment');
+                } else {
+                    transactionsForReport = transactionsForReport.filter(tx => tx.type === transactionType);
+                }
             }
             
             if (transactionsForReport.length === 0) {
                 toast({
                     title: 'No Data',
-                    description: `No ${transactionType !== 'all' ? transactionType + ' ' : ''}transactions found for the selected criteria.`,
+                    description: `No ${transactionType !== 'all' ? transactionType.replace('-', ' & ') + ' ' : ''}transactions found for the selected criteria.`,
                 });
                 setIsLoading(false);
                 return;
@@ -188,7 +192,7 @@ export default function ReportsPage() {
                 const doc = new jsPDF();
                 doc.text(reportTitle, 14, 16);
                 doc.setFontSize(10);
-                doc.text(`Transaction Type: ${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}`, 14, 22);
+                doc.text(`Transaction Type: ${transactionType.charAt(0).toUpperCase() + transactionType.slice(1).replace('-', ' & ')}`, 14, 22);
 
                 autoTable(doc, {
                     body: Object.entries(summary),
@@ -483,6 +487,10 @@ export default function ReportsPage() {
                                                  <FormItem className="flex items-center space-x-3 space-y-0">
                                                     <FormControl><RadioGroupItem value="repayment" /></FormControl>
                                                     <FormLabel className="font-normal">Repayments</FormLabel>
+                                                </FormItem>
+                                                <FormItem className="flex items-center space-x-3 space-y-0">
+                                                    <FormControl><RadioGroupItem value="deposits-repayments" /></FormControl>
+                                                    <FormLabel className="font-normal">Deposits & Repayments</FormLabel>
                                                 </FormItem>
                                             </RadioGroup>
                                         </FormControl>
