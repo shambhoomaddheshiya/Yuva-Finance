@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX, HandCoins } from 'lucide-react';
 import { format, getYear } from 'date-fns';
-import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -304,9 +304,22 @@ function PassbookView({ member }: { member: Member }) {
       [user, firestore, member.id]
     );
     const { data: transactions, isLoading } = useCollection<Transaction>(transactionsRef);
+
+    const getTransactionDate = (tx: Transaction): Date => {
+        if (tx.date instanceof Timestamp) {
+            return tx.date.toDate();
+        }
+        if (tx.date instanceof Date) {
+            return tx.date;
+        }
+        // Fallback for string dates
+        return new Date(tx.date as string);
+    };
   
     const sortedTransactions = useMemo(() => {
-        return transactions ? [...transactions].sort((a, b) => new Date(b.date as string).getTime() - new Date(a.date as string).getTime()) : [];
+        return transactions
+          ? [...transactions].sort((a, b) => getTransactionDate(b).getTime() - getTransactionDate(a).getTime())
+          : [];
     }, [transactions]);
     
     const getTxTypeClass = (type: Transaction['type']) => {
@@ -372,7 +385,7 @@ function PassbookView({ member }: { member: Member }) {
                             <TableBody>
                                 {sortedTransactions.map(tx => (
                                     <TableRow key={tx.id}>
-                                        <TableCell>{new Date(tx.date as string).toLocaleDateString()}</TableCell>
+                                        <TableCell>{getTransactionDate(tx).toLocaleDateString()}</TableCell>
                                         <TableCell className='capitalize'>
                                             <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${getTxTypeClass(tx.type)}`}>
                                                 {getTxTypeIcon(tx.type)}
@@ -717,3 +730,5 @@ export default function MembersPage() {
     </div>
   );
 }
+
+    
