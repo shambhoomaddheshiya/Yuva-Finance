@@ -651,8 +651,8 @@ export default function MembersPage() {
                     </TableCell>
                     <TableCell>{member.id}</TableCell>
                     <TableCell>{member.phone}</TableCell>
-                    <TableCell className="font-mono">₹{member.currentBalance.toLocaleString('en-IN')}</TableCell>
-                    <TableCell className="text-right font-mono">₹{(member.loanBalance || 0).toLocaleString('en-IN')}</TableCell>
+                    <TableCell className="font-mono">Rs {member.currentBalance.toLocaleString('en-IN')}</TableCell>
+                    <TableCell className="text-right font-mono">Rs {(member.loanBalance || 0).toLocaleString('en-IN')}</TableCell>
                      <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

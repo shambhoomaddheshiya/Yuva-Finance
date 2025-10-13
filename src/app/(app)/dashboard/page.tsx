@@ -145,28 +145,28 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Remaining Fund"
-          value={loading ? '...' : `₹${remainingFund.toLocaleString('en-IN')}`}
+          value={loading ? '...' : `Rs ${remainingFund.toLocaleString('en-IN')}`}
           icon={Banknote}
           loading={loading}
           description="Cash available in group"
         />
          <StatCard
           title="Total Deposits"
-          value={loading ? '...' : `₹${totalDeposits.toLocaleString('en-IN')}`}
+          value={loading ? '...' : `Rs ${totalDeposits.toLocaleString('en-IN')}`}
           icon={PiggyBank}
           loading={loading}
           description="From active members"
         />
         <StatCard
           title="Total Loan Disbursed"
-          value={loading ? '...' : `₹${totalLoan.toLocaleString('en-IN')}`}
+          value={loading ? '...' : `Rs ${totalLoan.toLocaleString('en-IN')}`}
           icon={Landmark}
           loading={loading}
           description="To active members"
         />
          <StatCard
           title="Total Interest Earned"
-          value={loading ? '...' : `₹${totalInterest.toLocaleString('en-IN')}`}
+          value={loading ? '...' : `Rs ${totalInterest.toLocaleString('en-IN')}`}
           icon={LibraryBig}
           loading={loading}
           description="From active members"
@@ -192,12 +192,12 @@ export default function DashboardPage() {
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
-                  tickFormatter={(value) => `₹${Number(value) / 1000}k`}
+                  tickFormatter={(value) => `Rs ${Number(value) / 1000}k`}
                 />
                 <Tooltip
                   cursor={{ fill: 'hsl(var(--muted))' }}
                   contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
-                  formatter={(value: number) => [`₹${value.toLocaleString('en-IN')}`, 'Total']}
+                  formatter={(value: number) => [`Rs ${value.toLocaleString('en-IN')}`, 'Total']}
                 />
                 <Bar dataKey="total" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -232,7 +232,7 @@ export default function DashboardPage() {
                           <p className="text-sm text-muted-foreground">{tx.description || tx.type.charAt(0).toUpperCase() + tx.type.slice(1)}</p>
                         </div>
                         <div className={`font-medium ${getTxAmountClass(tx.type)}`}>
-                          {getTxAmountPrefix(tx.type)}₹{tx.amount.toLocaleString('en-IN')}
+                          {getTxAmountPrefix(tx.type)}Rs {tx.amount.toLocaleString('en-IN')}
                         </div>
                       </div>
                     ))

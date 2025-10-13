@@ -132,7 +132,7 @@ export default function SettingsPage() {
                     name="monthlyContribution"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Monthly Contribution (₹)</FormLabel>
+                        <FormLabel>Monthly Contribution (Rs)</FormLabel>
                         <FormControl>
                           <Input type="number" placeholder="2000" {...field} />
                         </FormControl>
