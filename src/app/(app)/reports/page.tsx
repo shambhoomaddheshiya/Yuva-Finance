@@ -33,6 +33,8 @@ const reportSchema = z.object({
   endDate: z.date().optional(),
   transactionType: z.enum(['all', 'deposit', 'loan', 'repayment']),
   format: z.enum(['pdf', 'excel']),
+  exportScope: z.enum(['all', 'member']),
+  memberId: z.string().optional(),
 }).superRefine((data, ctx) => {
     if (data.reportType === 'monthly' && (!data.year || !data.month)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Year and month are required for monthly reports.", path: ['reportType']});
@@ -45,6 +47,9 @@ const reportSchema = z.object({
     }
     if (data.reportType === 'custom' && !data.endDate) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "End date is required for custom reports.", path: ['endDate']});
+    }
+    if (data.exportScope === 'member' && !data.memberId) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Please select a member.", path: ['memberId']});
     }
 });
 
@@ -64,10 +69,12 @@ export default function ReportsPage() {
             reportType: 'all',
             transactionType: 'all',
             format: 'pdf',
+            exportScope: 'all',
         },
     });
     
     const reportType = form.watch('reportType');
+    const exportScope = form.watch('exportScope');
     
     const getTransactionDate = (tx: Transaction) => {
         if (tx.date instanceof Timestamp) {
@@ -82,55 +89,43 @@ export default function ReportsPage() {
         setIsLoading(true);
 
         try {
-            const { reportType, year, month, startDate: customStartDate, endDate: customEndDate, transactionType, format: fileFormat } = values;
+            const { reportType, year, month, startDate: customStartDate, endDate: customEndDate, transactionType, format: fileFormat, exportScope, memberId } = values;
+            
             let startDate: Date | null = null;
             let endDate: Date | null = null;
-            let reportTitle: string = 'All Transactions Report';
+            let reportTitle: string = 'Group Transactions Report';
+            let memberName: string | undefined;
+
+            if (exportScope === 'member' && memberId) {
+                memberName = members.find(m => m.id === memberId)?.name;
+                reportTitle = `${memberName}'s Transaction Report`;
+            }
 
             if (reportType === 'monthly' && month && year) {
                 const selectedYear = parseInt(year);
                 const selectedMonth = parseInt(month);
                 startDate = startOfMonth(new Date(selectedYear, selectedMonth));
                 endDate = endOfMonth(new Date(selectedYear, selectedMonth));
-                reportTitle = `Monthly Report: ${format(startDate, 'MMMM yyyy')}`;
+                reportTitle = `${reportTitle}: ${format(startDate, 'MMMM yyyy')}`;
             } else if (reportType === 'yearly' && year) {
                 const selectedYear = parseInt(year);
                 startDate = startOfYear(new Date(selectedYear, 0));
                 endDate = endOfYear(new Date(selectedYear, 0));
-                reportTitle = `Yearly Report: ${year}`;
+                reportTitle = `${reportTitle}: ${year}`;
             } else if (reportType === 'custom' && customStartDate) {
                 startDate = customStartDate;
                 endDate = customEndDate || customStartDate;
-                reportTitle = `Custom Report: ${format(startDate, 'dd/MM/yy')} - ${format(endDate, 'dd/MM/yy')}`;
+                reportTitle = `${reportTitle}: ${format(startDate, 'dd/MM/yy')} - ${format(endDate, 'dd/MM/yy')}`;
             }
 
-            // Always fetch all transactions to calculate overall summary correctly
             const allTransactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`));
             const allTransactionsSnapshot = await getDocs(allTransactionsQuery);
-            const allTransactions = allTransactionsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction));
+            let transactionsForReport = allTransactionsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction));
             
-            // Calculate totals from ALL transactions
-            const totalDeposit = allTransactions
-                .filter(t => t.type === 'deposit')
-                .reduce((sum, t) => sum + t.amount, 0);
-            
-            const totalLoan = allTransactions
-                .filter(t => t.type === 'loan')
-                .reduce((sum, t) => sum + t.amount, 0);
-
-            const totalRepayment = allTransactions
-                .filter(t => t.type === 'repayment')
-                .reduce((sum, t) => sum + (t.principal || 0), 0);
-            
-            const totalInterest = allTransactions
-                .filter(t => t.type === 'repayment')
-                .reduce((sum, t) => sum + (t.interest || 0), 0);
-            
-            const remainingFund = totalDeposit - (totalLoan - totalRepayment) + totalInterest;
-
-
             // Filter transactions for the actual report body
-            let transactionsForReport = allTransactions;
+            if (exportScope === 'member' && memberId) {
+                transactionsForReport = transactionsForReport.filter(tx => tx.memberId === memberId);
+            }
 
             if (startDate && endDate) {
                  transactionsForReport = transactionsForReport.filter(tx => {
@@ -146,18 +141,34 @@ export default function ReportsPage() {
             if (transactionsForReport.length === 0) {
                 toast({
                     title: 'No Data',
-                    description: `No ${transactionType !== 'all' ? transactionType + ' ' : ''}transactions found for the selected period.`,
+                    description: `No ${transactionType !== 'all' ? transactionType + ' ' : ''}transactions found for the selected criteria.`,
                 });
                 setIsLoading(false);
                 return;
             }
+            
+            // Calculate totals based on the filtered transactions for the report
+            const totalDeposit = transactionsForReport
+                .filter(t => t.type === 'deposit')
+                .reduce((sum, t) => sum + t.amount, 0);
+            
+            const totalLoan = transactionsForReport
+                .filter(t => t.type === 'loan')
+                .reduce((sum, t) => sum + t.amount, 0);
+
+            const totalRepayment = transactionsForReport
+                .filter(t => t.type === 'repayment')
+                .reduce((sum, t) => sum + (t.principal || 0), 0);
+            
+            const totalInterest = transactionsForReport
+                .filter(t => t.type === 'repayment')
+                .reduce((sum, t) => sum + (t.interest || 0), 0);
 
              const summary = {
-                'Total Deposits (All Time)': `Rs. ${totalDeposit.toLocaleString('en-IN')}`,
-                'Total Loans (All Time)': `Rs. ${totalLoan.toLocaleString('en-IN')}`,
-                'Total Principal Repaid (All Time)': `Rs. ${totalRepayment.toLocaleString('en-IN')}`,
-                'Total Interest Earned (All Time)': `Rs. ${totalInterest.toLocaleString('en-IN')}`,
-                'Remaining Fund (Current Balance)': `Rs. ${remainingFund.toLocaleString('en-IN')}`,
+                'Total Deposits': `Rs. ${totalDeposit.toLocaleString('en-IN')}`,
+                'Total Loans': `Rs. ${totalLoan.toLocaleString('en-IN')}`,
+                'Total Principal Repaid': `Rs. ${totalRepayment.toLocaleString('en-IN')}`,
+                'Total Interest Earned': `Rs. ${totalInterest.toLocaleString('en-IN')}`,
             };
 
             const dataForExport = transactionsForReport.map(tx => ({
@@ -182,7 +193,7 @@ export default function ReportsPage() {
                     startY: 28,
                     theme: 'striped',
                     styles: { fontSize: 10 },
-                    head: [['Metric', 'Amount (INR)']],
+                    head: [['Summary Metric', 'Amount (INR)']],
                     headStyles: { fillColor: [34, 139, 34] },
                 });
                 
@@ -238,6 +249,58 @@ export default function ReportsPage() {
                 <CardContent>
                     <Form {...form}>
                         <form onSubmit={form.handleSubmit(generateReport)} className="space-y-8">
+                             <FormField
+                                control={form.control}
+                                name="exportScope"
+                                render={({ field }) => (
+                                    <FormItem className="space-y-3">
+                                        <FormLabel>Export Scope</FormLabel>
+                                        <FormControl>
+                                            <RadioGroup
+                                                onValueChange={field.onChange}
+                                                defaultValue={field.value}
+                                                className="flex flex-col space-y-1"
+                                            >
+                                                <FormItem className="flex items-center space-x-3 space-y-0">
+                                                    <FormControl><RadioGroupItem value="all" /></FormControl>
+                                                    <FormLabel className="font-normal">All Members</FormLabel>
+                                                </FormItem>
+                                                <FormItem className="flex items-center space-x-3 space-y-0">
+                                                    <FormControl><RadioGroupItem value="member" /></FormControl>
+                                                    <FormLabel className="font-normal">Specific Member</FormLabel>
+                                                </FormItem>
+                                            </RadioGroup>
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            {exportScope === 'member' && (
+                                 <FormField
+                                    control={form.control}
+                                    name="memberId"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Member</FormLabel>
+                                            <Select onValueChange={field.onChange} defaultValue={field.value} disabled={membersLoading}>
+                                                <FormControl>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select a member to export" />
+                                                </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                {members?.map((m) => (
+                                                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                                ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            )}
+
                             <FormField
                                 control={form.control}
                                 name="reportType"
