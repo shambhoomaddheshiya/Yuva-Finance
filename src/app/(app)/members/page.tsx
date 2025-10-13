@@ -488,15 +488,6 @@ export default function MembersPage() {
   const handleStatusChange = async (member: Member, newStatus: 'active' | 'inactive') => {
     if (!user || !firestore) return;
 
-    if (newStatus === 'inactive' && (member.loanBalance || 0) > 0) {
-        toast({
-            variant: 'destructive',
-            title: 'Deactivation Not Allowed',
-            description: `${member.name} has an outstanding loan balance. Please clear the loan before deactivating.`,
-        });
-        return;
-    }
-
     setIsUpdatingStatus(true);
     
     const memberDocRef = doc(firestore, `users/${user.uid}/members`, member.id);
