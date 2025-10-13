@@ -148,7 +148,7 @@ export default function ReportsPage() {
             }
             
             // Calculate totals based on the filtered transactions for the report
-            const totalDeposit = transactionsForReport
+            const deposits = transactionsForReport
                 .filter(t => t.type === 'deposit')
                 .reduce((sum, t) => sum + t.amount, 0);
             
@@ -163,6 +163,8 @@ export default function ReportsPage() {
             const totalInterest = transactionsForReport
                 .filter(t => t.type === 'repayment')
                 .reduce((sum, t) => sum + (t.interest || 0), 0);
+            
+            const totalDeposit = deposits + totalInterest;
 
              const summary = {
                 'Total Deposits': `Rs. ${totalDeposit.toLocaleString('en-IN')}`,

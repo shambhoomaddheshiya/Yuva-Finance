@@ -61,7 +61,7 @@ export default function DashboardPage() {
     if (!transactions) {
       return { totalDeposit: 0, totalLoan: 0, totalRepayment: 0, totalInterest: 0, remainingFund: 0 };
     }
-    const totalDeposit = transactions
+    const deposits = transactions
       .filter(t => t.type === 'deposit')
       .reduce((sum, t) => sum + t.amount, 0);
 
@@ -77,7 +77,9 @@ export default function DashboardPage() {
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.interest || 0), 0);
 
-    const remainingFund = totalDeposit - (totalLoan - totalRepayment) + totalInterest;
+    const totalDeposit = deposits + totalInterest;
+
+    const remainingFund = totalDeposit - (totalLoan - totalRepayment);
     
     return { totalDeposit, totalLoan, totalRepayment, totalInterest, remainingFund };
   }, [transactions]);
