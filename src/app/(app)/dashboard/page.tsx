@@ -63,8 +63,6 @@ export default function DashboardPage() {
   const totalRepayment = settings?.totalRepayment || 0;
   const totalInterest = settings?.totalInterest || 0;
   const remainingFund = totalDeposit - (totalLoan - totalRepayment) + totalInterest;
-  const activeMembersCount = members ? members.filter(m => m.status === 'active').length : 0;
-
 
   const chartData = [
     { name: 'Deposits', total: totalDeposit, fill: 'hsl(var(--primary))' },
@@ -172,6 +170,7 @@ export default function DashboardPage() {
                 <Tooltip
                   cursor={{ fill: 'hsl(var(--muted))' }}
                   contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                  formatter={(value: number) => [`₹${value.toLocaleString('en-IN')}`, 'Total']}
                 />
                 <Bar dataKey="total" radius={[4, 4, 0, 0]} />
               </BarChart>
