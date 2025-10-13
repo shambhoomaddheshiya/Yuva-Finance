@@ -890,6 +890,18 @@ export default function TransactionsPage() {
       );
     });
   }, [transactions, members, searchQuery, filter, selectedYear, selectedMonth, customDateRange]);
+  
+  const totalFilteredAmount = useMemo(() => {
+    return filteredTransactions.reduce((sum, tx) => sum + tx.amount, 0);
+  }, [filteredTransactions]);
+
+  const filterTitle = useMemo(() => {
+    if (filter === 'all') return 'All Transactions Total';
+    if (filter === 'monthly') return `Monthly Total (${format(new Date(parseInt(selectedYear), parseInt(selectedMonth)), 'MMM yyyy')})`;
+    if (filter === 'yearly') return `Yearly Total (${selectedYear})`;
+    return `Filtered ${filter.charAt(0).toUpperCase() + filter.slice(1)}s Total`;
+  }, [filter, selectedYear, selectedMonth]);
+
 
   const handleEdit = (transaction: Transaction) => {
     setSelectedTransaction(transaction);
@@ -1004,6 +1016,19 @@ export default function TransactionsPage() {
           </DialogContent>
         </Dialog>
       </div>
+      
+       {filteredTransactions.length > 0 && (
+        <Card>
+            <CardHeader className="p-4">
+                <CardTitle className="text-base font-medium">{filterTitle}</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+                <div className="text-3xl font-bold font-headline text-primary">
+                    ₹{totalFilteredAmount.toLocaleString('en-IN')}
+                </div>
+            </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
