@@ -88,7 +88,9 @@ const transactionSchema = z.object({
   interest: z.coerce.number().optional(),
 }).refine(data => {
     if (data.type === 'repayment') {
-        return data.principal !== undefined && data.interest !== undefined && (data.principal + data.interest === data.amount);
+        const principal = data.principal || 0;
+        const interest = data.interest || 0;
+        return principal + interest === data.amount;
     }
     return true;
 }, {
@@ -132,7 +134,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
   useEffect(() => {
     if (transactionType === 'repayment') {
-        const totalAmount = (principal || 0) + (interest || 0);
+        const totalAmount = Number(principal || 0) + Number(interest || 0);
         form.setValue('amount', totalAmount, { shouldValidate: true });
     }
   }, [principal, interest, transactionType, form]);
