@@ -5,7 +5,7 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2, HandCoins } from 'lucide-react';
 import { collection, doc, getDoc, query, writeBatch, where, getDocs, deleteDoc, Timestamp } from 'firebase/firestore';
 import { format, getYear } from 'date-fns';
 
@@ -78,7 +78,7 @@ import { DateRange } from 'react-day-picker';
 
 const transactionSchema = z.object({
   memberId: z.string().nonempty('Please select a member.'),
-  type: z.enum(['deposit', 'withdrawal'], {
+  type: z.enum(['deposit', 'loan', 'repayment'], {
     required_error: 'You need to select a transaction type.',
   }),
   amount: z.coerce.number().positive('Amount must be a positive number.'),
@@ -133,35 +133,56 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         if (!settingsSnapshot.exists()) throw new Error("Group settings not found.");
         const settingsData = settingsSnapshot.data() as GroupSettings;
         
-        const amountChange = values.type === 'deposit' ? values.amount : -values.amount;
-
-        const newMemberBalance = memberData.currentBalance + amountChange;
+        let newMemberBalance = memberData.currentBalance;
+        let newMemberLoanBalance = memberData.loanBalance || 0;
+        let newTotalDeposit = settingsData.totalDeposit || 0;
+        let newTotalLoan = settingsData.totalLoan || 0;
+        let newTotalRepayment = settingsData.totalRepayment || 0;
+        let finalBalanceForTx = 0;
 
         // 1. Create the new transaction
         const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
+        
+        // 2. Update member and group totals based on transaction type
+        switch (values.type) {
+            case 'deposit':
+                newMemberBalance += values.amount;
+                newTotalDeposit += values.amount;
+                finalBalanceForTx = newMemberBalance;
+                batch.update(memberDocRef, { currentBalance: newMemberBalance });
+                break;
+            case 'loan':
+                newMemberLoanBalance += values.amount;
+                newTotalLoan += values.amount;
+                finalBalanceForTx = newMemberLoanBalance;
+                batch.update(memberDocRef, { loanBalance: newMemberLoanBalance });
+                break;
+            case 'repayment':
+                newMemberLoanBalance -= values.amount;
+                newTotalRepayment += values.amount;
+                finalBalanceForTx = newMemberLoanBalance;
+                batch.update(memberDocRef, { loanBalance: newMemberLoanBalance });
+                break;
+        }
+
         const newTransaction: Omit<Transaction, 'id'> = {
             memberId: values.memberId,
             type: values.type,
             amount: values.amount,
             date: Timestamp.fromDate(values.date),
             description: values.description,
-            balance: newMemberBalance, // The new balance after this transaction
+            balance: finalBalanceForTx,
         };
         batch.set(newTxRef, newTransaction);
         
-        // 2. Update member's balance and totals
-        const newTotalDeposited = memberData.totalDeposited + (values.type === 'deposit' ? values.amount : 0);
-        const newTotalWithdrawn = memberData.totalWithdrawn + (values.type === 'withdrawal' ? values.amount : 0);
-        const memberUpdateData: Partial<Member> = {
-            currentBalance: newMemberBalance,
-            totalDeposited: newTotalDeposited,
-            totalWithdrawn: newTotalWithdrawn,
-        };
-        batch.update(memberDocRef, memberUpdateData);
-        
         // 3. Update group's total fund
-        const newTotalFund = settingsData.totalFund + amountChange;
-        batch.update(settingsDocRef, { totalFund: newTotalFund });
+        const newRemainingFund = newTotalDeposit - (newTotalLoan - newTotalRepayment);
+        batch.update(settingsDocRef, { 
+            totalDeposit: newTotalDeposit,
+            totalLoan: newTotalLoan,
+            totalRepayment: newTotalRepayment,
+            totalFund: newRemainingFund // totalFund is used as remainingFund
+        });
         
         await batch.commit();
 
@@ -199,15 +220,16 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {members && members.map((m) => (
+                  {members && members.filter(m => m.status === 'active').map((m) => (
                     <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
                {selectedMember && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  Current Balance: <span className="font-medium">₹{selectedMember.currentBalance.toLocaleString('en-IN')}</span>
-                </p>
+                <div className="text-sm text-muted-foreground mt-2 grid grid-cols-2">
+                    <p>Deposit Balance: <span className="font-medium">₹{selectedMember.currentBalance.toLocaleString('en-IN')}</span></p>
+                    <p>Loan Balance: <span className="font-medium">₹{(selectedMember.loanBalance || 0).toLocaleString('en-IN')}</span></p>
+                </div>
               )}
               <FormMessage />
             </FormItem>
@@ -226,8 +248,12 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                     <FormLabel className="font-normal">Deposit</FormLabel>
                   </FormItem>
                   <FormItem className="flex items-center space-x-3 space-y-0">
-                    <FormControl><RadioGroupItem value="withdrawal" /></FormControl>
-                    <FormLabel className="font-normal">Withdrawal</FormLabel>
+                    <FormControl><RadioGroupItem value="loan" /></FormControl>
+                    <FormLabel className="font-normal">Loan</FormLabel>
+                  </FormItem>
+                  <FormItem className="flex items-center space-x-3 space-y-0">
+                    <FormControl><RadioGroupItem value="repayment" /></FormControl>
+                    <FormLabel className="font-normal">Repayment</FormLabel>
                   </FormItem>
                 </RadioGroup>
               </FormControl>
@@ -333,62 +359,34 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
     if (!user || !firestore) return;
     setIsLoading(true);
     
+    // Editing a transaction is complex due to its effect on subsequent balances.
+    // The simplest, safest approach is to prevent editing and guide the user to delete and re-create.
+    // A full implementation would require recalculating all subsequent transactions for the member.
+    // For this app, we will prevent editing amount to avoid complex recalculations.
+    if (values.amount !== transaction.amount) {
+        toast({
+            variant: "destructive",
+            title: "Edit Not Allowed",
+            description: "Changing the amount of a past transaction is not supported. Please delete this transaction and create a new one with the correct amount."
+        });
+        setIsLoading(false);
+        return;
+    }
+    
     try {
         const batch = writeBatch(firestore);
         const txRef = doc(firestore, `users/${user.uid}/transactions`, transaction.id);
-        const memberRef = doc(firestore, `users/${user.uid}/members`, transaction.memberId);
-        const settingsRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
 
-        const memberSnap = await getDoc(memberRef);
-        if (!memberSnap.exists()) throw new Error("Member not found.");
-        const memberData = memberSnap.data() as Member;
-
-        const settingsSnap = await getDoc(settingsRef);
-        if (!settingsSnap.exists()) throw new Error("Settings not found.");
-        const settingsData = settingsSnap.data() as GroupSettings;
-
-        const oldAmount = transaction.amount;
-        const newAmount = values.amount;
-        const amountDifference = newAmount - oldAmount;
-        
-        // This is the net change for the balance based on transaction type
-        const balanceChange = transaction.type === 'deposit' ? amountDifference : -amountDifference;
-        
-        // Calculate new totals for member and group
-        const newMemberBalance = memberData.currentBalance + balanceChange;
-        const newTotalFund = settingsData.totalFund + balanceChange;
-        let newTotalDeposited = memberData.totalDeposited;
-        let newTotalWithdrawn = memberData.totalWithdrawn;
-
-        if (transaction.type === 'deposit') {
-          newTotalDeposited = memberData.totalDeposited - oldAmount + newAmount;
-        } else { // withdrawal
-          newTotalWithdrawn = memberData.totalWithdrawn - oldAmount + newAmount;
-        }
-
-
-        // 1. Update the transaction itself
         batch.update(txRef, {
-            amount: values.amount,
             date: Timestamp.fromDate(values.date),
             description: values.description || '',
         });
-
-        // 2. Update member's totals
-        batch.update(memberRef, { 
-          currentBalance: newMemberBalance,
-          totalDeposited: newTotalDeposited,
-          totalWithdrawn: newTotalWithdrawn,
-        });
         
-        // 3. Update group's total fund
-        batch.update(settingsRef, { totalFund: newTotalFund });
-
         await batch.commit();
 
         toast({
             title: 'Success!',
-            description: 'Transaction has been updated successfully.',
+            description: 'Transaction details have been updated.',
         });
         onOpenChange(false);
     } catch (error: any) {
@@ -410,8 +408,8 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
           name="amount"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Amount</FormLabel>
-              <FormControl><Input type="number" placeholder="2000" {...field} /></FormControl>
+              <FormLabel>Amount (Editing disabled)</FormLabel>
+              <FormControl><Input type="number" placeholder="2000" {...field} disabled /></FormControl>
               <FormMessage />
             </FormItem>
           )}
@@ -512,6 +510,42 @@ export default function TransactionsPage() {
     }
     return new Date(tx.date as string);
   };
+  
+  const getTxTypeClass = (type: Transaction['type']) => {
+    switch (type) {
+        case 'deposit': return 'border-transparent bg-green-100 text-green-800';
+        case 'loan': return 'border-transparent bg-red-100 text-red-800';
+        case 'repayment': return 'border-transparent bg-blue-100 text-blue-800';
+        default: return '';
+    }
+  }
+
+  const getTxAmountClass = (type: Transaction['type']) => {
+    switch (type) {
+        case 'deposit': return 'text-green-600';
+        case 'loan': return 'text-red-600';
+        case 'repayment': return 'text-blue-600';
+        default: return '';
+    }
+  }
+
+  const getTxTypeIcon = (type: Transaction['type']) => {
+    switch(type) {
+      case 'deposit': return <ArrowUp className="mr-1 h-3 w-3" />;
+      case 'loan': return <ArrowDown className="mr-1 h-3 w-3" />;
+      case 'repayment': return <HandCoins className="mr-1 h-3 w-3" />;
+    }
+  }
+  
+  const getTxAmountPrefix = (type: Transaction['type']) => {
+    switch (type) {
+        case 'deposit': return '+';
+        case 'repayment': return '+';
+        case 'loan': return '-';
+        default: return '';
+    }
+  }
+
 
   const filteredTransactions = useMemo(() => {
     if (!transactions || !members) return [];
@@ -526,7 +560,8 @@ export default function TransactionsPage() {
 
         switch (filter) {
             case 'deposit':
-            case 'withdrawal':
+            case 'loan':
+            case 'repayment':
                 return tx.type === filter;
             case 'monthly':
                 return txYear === parseInt(selectedYear) && txMonth === parseInt(selectedMonth);
@@ -580,31 +615,53 @@ export default function TransactionsPage() {
         const memberRef = doc(firestore, `users/${user.uid}/members`, selectedTransaction.memberId);
         const settingsRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
 
-        const amountChange = selectedTransaction.type === 'deposit' ? -selectedTransaction.amount : selectedTransaction.amount;
+        const memberSnap = await getDoc(memberRef);
+        const settingsSnap = await getDoc(settingsRef);
+
+        if (!memberSnap.exists()) throw new Error("Member not found.");
+        if (!settingsSnap.exists()) throw new Error("Settings not found.");
         
-        // 1. Delete the transaction
+        const memberData = memberSnap.data() as Member;
+        const settingsData = settingsSnap.data() as GroupSettings;
+
+        let { amount, type } = selectedTransaction;
+
+        // Revert member and group totals
+        let newMemberBalance = memberData.currentBalance;
+        let newMemberLoanBalance = memberData.loanBalance || 0;
+        let newTotalDeposit = settingsData.totalDeposit || 0;
+        let newTotalLoan = settingsData.totalLoan || 0;
+        let newTotalRepayment = settingsData.totalRepayment || 0;
+        
+        switch (type) {
+            case 'deposit':
+                newMemberBalance -= amount;
+                newTotalDeposit -= amount;
+                batch.update(memberRef, { currentBalance: newMemberBalance });
+                break;
+            case 'loan':
+                newMemberLoanBalance -= amount;
+                newTotalLoan -= amount;
+                batch.update(memberRef, { loanBalance: newMemberLoanBalance });
+                break;
+            case 'repayment':
+                newMemberLoanBalance += amount;
+                newTotalRepayment -= amount;
+                batch.update(memberRef, { loanBalance: newMemberLoanBalance });
+                break;
+        }
+
+        // Delete the transaction
         batch.delete(txRef);
         
-        // 2. Update member's current balance, and totals
-        const memberSnap = await getDoc(memberRef);
-        if(memberSnap.exists()){
-            const memberData = memberSnap.data() as Member;
-            const newTotalDeposited = memberData.totalDeposited - (selectedTransaction.type === 'deposit' ? selectedTransaction.amount : 0);
-            const newTotalWithdrawn = memberData.totalWithdrawn - (selectedTransaction.type === 'withdrawal' ? selectedTransaction.amount : 0);
-
-            batch.update(memberRef, { 
-                currentBalance: memberData.currentBalance + amountChange,
-                totalDeposited: newTotalDeposited,
-                totalWithdrawn: newTotalWithdrawn,
-            });
-        }
-
-        // 3. Update group total fund
-        const settingsSnap = await getDoc(settingsRef);
-        if(settingsSnap.exists()){
-            const settingsData = settingsSnap.data() as GroupSettings;
-            batch.update(settingsRef, { totalFund: settingsData.totalFund + amountChange });
-        }
+        // Recalculate and update group's remaining fund
+        const newRemainingFund = newTotalDeposit - (newTotalLoan - newTotalRepayment);
+        batch.update(settingsRef, { 
+            totalDeposit: newTotalDeposit,
+            totalLoan: newTotalLoan,
+            totalRepayment: newTotalRepayment,
+            totalFund: newRemainingFund,
+        });
 
         await batch.commit();
         
@@ -672,7 +729,8 @@ export default function TransactionsPage() {
                 <Label className="font-semibold">Show:</Label>
                 <div className="flex items-center space-x-2"><RadioGroupItem value="all" id="all" /><Label htmlFor="all">All</Label></div>
                 <div className="flex items-center space-x-2"><RadioGroupItem value="deposit" id="deposit" /><Label htmlFor="deposit">Deposits</Label></div>
-                <div className="flex items-center space-x-2"><RadioGroupItem value="withdrawal" id="withdrawal" /><Label htmlFor="withdrawal">Withdrawals</Label></div>
+                <div className="flex items-center space-x-2"><RadioGroupItem value="loan" id="loan" /><Label htmlFor="loan">Loans</Label></div>
+                <div className="flex items-center space-x-2"><RadioGroupItem value="repayment" id="repayment" /><Label htmlFor="repayment">Repayments</Label></div>
                 <div className="flex items-center space-x-2"><RadioGroupItem value="monthly" id="monthly" /><Label htmlFor="monthly">Monthly</Label></div>
                 <div className="flex items-center space-x-2"><RadioGroupItem value="yearly" id="yearly" /><Label htmlFor="yearly">Yearly</Label></div>
                 <div className="flex items-center space-x-2"><RadioGroupItem value="custom" id="custom" /><Label htmlFor="custom">Custom</Label></div>
@@ -763,15 +821,15 @@ export default function TransactionsPage() {
                   <TableRow key={tx.id}>
                     <TableCell className="font-medium">{members?.find(m => m.id === tx.memberId)?.name || 'Unknown'}</TableCell>
                     <TableCell>
-                      <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${tx.type === 'deposit' ? 'border-transparent bg-green-100 text-green-800' : 'border-transparent bg-red-100 text-red-800'}`}>
-                        {tx.type === 'deposit' ? <ArrowUp className="mr-1 h-3 w-3" /> : <ArrowDown className="mr-1 h-3 w-3" />}
+                      <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${getTxTypeClass(tx.type)}`}>
+                        {getTxTypeIcon(tx.type)}
                         {tx.type}
                       </div>
                     </TableCell>
                     <TableCell>{getTransactionDate(tx).toLocaleDateString()}</TableCell>
                     <TableCell>{tx.description}</TableCell>
-                    <TableCell className={`text-right font-mono font-semibold ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
-                      {tx.type === 'deposit' ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}
+                    <TableCell className={`text-right font-mono font-semibold ${getTxAmountClass(tx.type)}`}>
+                      {getTxAmountPrefix(tx.type)}₹{tx.amount.toLocaleString('en-IN')}
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
@@ -813,7 +871,7 @@ export default function TransactionsPage() {
           <DialogHeader>
             <DialogTitle className="font-headline">Edit Transaction</DialogTitle>
             <DialogDescription>
-              Update the transaction details below. The member and type cannot be changed.
+              Update the transaction details below. Changing the amount is not permitted to maintain accurate historical balances.
             </DialogDescription>
           </DialogHeader>
           {selectedTransaction && <EditTransactionForm onOpenChange={setIsEditDialogOpen} transaction={selectedTransaction} />}
@@ -825,7 +883,7 @@ export default function TransactionsPage() {
             <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete the transaction.
+                    This action cannot be undone. This will permanently delete the transaction and adjust member/group balances accordingly.
                 </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -841,5 +899,3 @@ export default function TransactionsPage() {
     </div>
   );
 }
-
-    

@@ -4,7 +4,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
-import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp } from 'lucide-react';
+import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins } from 'lucide-react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -57,15 +57,17 @@ export default function DashboardPage() {
   const { data: transactions, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
   
   const loading = settingsLoading || membersLoading || txLoading;
-  
-  const totalDepositedAllTime = members ? members.reduce((sum, member) => sum + member.totalDeposited, 0) : 0;
-  const totalWithdrawnAllTime = members ? members.reduce((sum, member) => sum + member.totalWithdrawn, 0) : 0;
-  const totalRemainingFund = totalDepositedAllTime - totalWithdrawnAllTime;
+
+  const totalDeposit = settings?.totalDeposit || 0;
+  const totalLoan = settings?.totalLoan || 0;
+  const totalRepayment = settings?.totalRepayment || 0;
+  const remainingFund = totalDeposit - (totalLoan - totalRepayment);
   const activeMembersCount = members ? members.filter(m => m.status === 'active').length : 0;
 
+
   const chartData = [
-    { name: 'Deposits', total: transactions?.filter(t => t.type === 'deposit').reduce((acc, t) => acc + t.amount, 0) || 0, fill: 'hsl(var(--primary))' },
-    { name: 'Withdrawals', total: transactions?.filter(t => t.type === 'withdrawal').reduce((acc, t) => acc + t.amount, 0) || 0, fill: 'hsl(var(--destructive))' },
+    { name: 'Deposits', total: totalDeposit, fill: 'hsl(var(--primary))' },
+    { name: 'Loans', total: totalLoan, fill: 'hsl(var(--destructive))' },
   ];
   
   const getTransactionDate = (tx: Transaction): Date => {
@@ -79,23 +81,62 @@ export default function DashboardPage() {
     return new Date(tx.date as string);
   };
 
+  const getTxIcon = (type: Transaction['type']) => {
+    switch (type) {
+      case 'deposit':
+        return <div className="p-2 bg-green-100 rounded-full mr-4"><ArrowUp className="h-4 w-4 text-green-600"/></div>;
+      case 'loan':
+        return <div className="p-2 bg-red-100 rounded-full mr-4"><ArrowDown className="h-4 w-4 text-red-600"/></div>;
+      case 'repayment':
+        return <div className="p-2 bg-blue-100 rounded-full mr-4"><HandCoins className="h-4 w-4 text-blue-600"/></div>;
+      default:
+        return null;
+    }
+  }
+
+  const getTxAmountClass = (type: Transaction['type']) => {
+    switch (type) {
+        case 'deposit': return 'text-green-600';
+        case 'loan': return 'text-red-600';
+        case 'repayment': return 'text-blue-600';
+        default: return '';
+    }
+  }
+  
+  const getTxAmountPrefix = (type: Transaction['type']) => {
+    switch (type) {
+        case 'deposit': return '+';
+        case 'repayment': return '+';
+        case 'loan': return '-';
+        default: return '';
+    }
+  }
+
+
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-3xl font-bold font-headline">Dashboard</h1>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Remaining Fund"
-          value={members ? `₹${totalRemainingFund.toLocaleString('en-IN')}` : '...'}
+          value={settings ? `₹${remainingFund.toLocaleString('en-IN')}` : '...'}
           icon={Banknote}
-          loading={membersLoading}
-          description="Current cash balance"
+          loading={settingsLoading}
+          description="Cash available in group"
         />
          <StatCard
-          title="Total Deposited So Far"
-          value={members ? `₹${totalDepositedAllTime.toLocaleString('en-IN')}` : '...'}
+          title="Total Deposits"
+          value={settings ? `₹${totalDeposit.toLocaleString('en-IN')}` : '...'}
           icon={PiggyBank}
-          loading={membersLoading}
+          loading={settingsLoading}
           description="From all members"
+        />
+        <StatCard
+          title="Total Loan Disbursed"
+          value={settings ? `₹${totalLoan.toLocaleString('en-IN')}` : '...'}
+          icon={Landmark}
+          loading={settingsLoading}
+          description="Outstanding + Repaid"
         />
         <StatCard
           title="Active Members"
@@ -103,13 +144,6 @@ export default function DashboardPage() {
           icon={Users}
           loading={membersLoading}
           description={`${(members?.length || 0) - activeMembersCount} inactive`}
-        />
-        <StatCard
-          title="Interest Rate"
-          value={settings ? `${settings.interestRate}%` : '...'}
-          icon={Percent}
-          loading={settingsLoading}
-          description="Annual interest rate"
         />
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
@@ -165,17 +199,13 @@ export default function DashboardPage() {
                     .slice(0, 5)
                     .map((tx) => (
                       <div key={tx.id} className="flex items-center">
-                         {tx.type === 'deposit' ? (
-                            <div className="p-2 bg-green-100 rounded-full mr-4"><ArrowUp className="h-4 w-4 text-green-600"/></div>
-                          ) : (
-                            <div className="p-2 bg-red-100 rounded-full mr-4"><ArrowDown className="h-4 w-4 text-red-600"/></div>
-                          )}
+                         {getTxIcon(tx.type)}
                         <div className="flex-1 space-y-1">
                           <p className="text-sm font-medium leading-none">{members.find(m => m.id === tx.memberId)?.name || 'Unknown Member'}</p>
-                          <p className="text-sm text-muted-foreground">{tx.description}</p>
+                          <p className="text-sm text-muted-foreground">{tx.description || tx.type.charAt(0).toUpperCase() + tx.type.slice(1)}</p>
                         </div>
-                        <div className={`font-medium ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
-                          ₹{tx.amount.toLocaleString('en-IN')}
+                        <div className={`font-medium ${getTxAmountClass(tx.type)}`}>
+                          {getTxAmountPrefix(tx.type)}₹{tx.amount.toLocaleString('en-IN')}
                         </div>
                       </div>
                     ))

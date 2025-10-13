@@ -77,6 +77,9 @@ export default function LoginPage() {
         totalMembers: 0,
         totalFund: 0,
         establishedDate: new Date().toISOString(),
+        totalDeposit: 0,
+        totalLoan: 0,
+        totalRepayment: 0,
       };
       await setDoc(settingsRef, defaultSettings);
     }
@@ -87,7 +90,8 @@ export default function LoginPage() {
     if (!auth) return;
     setIsLoading(true);
     try {
-        await signInWithEmailAndPassword(auth, values.email, values.password);
+        const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
+        await ensureSettingsExist(userCredential.user);
         // The redirect is handled by the layout
     } catch(error: any) {
          toast({
@@ -189,5 +193,3 @@ export default function LoginPage() {
     </Card>
   );
 }
-
-    

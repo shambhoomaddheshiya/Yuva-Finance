@@ -5,7 +5,7 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX } from 'lucide-react';
+import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX, HandCoins } from 'lucide-react';
 import { format, getYear } from 'date-fns';
 import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
@@ -148,7 +148,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
                 id: values.id, name: values.name, phone: values.phone, aadhaar: aadhaarUnformatted,
                 joinDate: values.joinDate.toISOString(),
                 status: 'active', // New members are active by default
-                totalDeposited: 0, totalWithdrawn: 0, currentBalance: 0, interestEarned: 0,
+                totalDeposited: 0, totalWithdrawn: 0, currentBalance: 0, interestEarned: 0, loanBalance: 0,
             };
             const newMemberRef = doc(firestore, `users/${user.uid}/members`, values.id);
             batch.set(newMemberRef, newMember);
@@ -163,6 +163,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
                  const defaultSettings: GroupSettings = {
                     groupName: 'My Savings Group', monthlyContribution: 1000, interestRate: 2,
                     totalMembers: 1, totalFund: 0, establishedDate: new Date().toISOString(),
+                    totalDeposit: 0, totalLoan: 0, totalRepayment: 0,
                 };
                 batch.set(settingsDocRef, defaultSettings);
             }
@@ -308,17 +309,47 @@ function PassbookView({ member }: { member: Member }) {
         return transactions ? [...transactions].sort((a, b) => new Date(b.date as string).getTime() - new Date(a.date as string).getTime()) : [];
     }, [transactions]);
     
-    const memberTotalBalance = member.currentBalance + member.interestEarned;
+    const getTxTypeClass = (type: Transaction['type']) => {
+        switch (type) {
+            case 'deposit': return 'border-transparent bg-green-100 text-green-800';
+            case 'loan': return 'border-transparent bg-red-100 text-red-800';
+            case 'repayment': return 'border-transparent bg-blue-100 text-blue-800';
+            default: return '';
+        }
+    }
+    const getTxAmountClass = (type: Transaction['type']) => {
+        switch (type) {
+            case 'deposit': return 'text-green-600';
+            case 'loan': return 'text-red-600';
+            case 'repayment': return 'text-blue-600';
+            default: return '';
+        }
+    }
+     const getTxTypeIcon = (type: Transaction['type']) => {
+        switch(type) {
+          case 'deposit': return <ArrowUp className="mr-1 h-3 w-3" />;
+          case 'loan': return <ArrowDown className="mr-1 h-3 w-3" />;
+          case 'repayment': return <HandCoins className="mr-1 h-3 w-3" />;
+        }
+      }
+      const getTxAmountPrefix = (type: Transaction['type']) => {
+        switch (type) {
+            case 'deposit': return '+';
+            case 'repayment': return '+';
+            case 'loan': return '-';
+            default: return '';
+        }
+      }
 
     return (
         <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                 <p><span className="font-semibold">Name:</span> {member.name}</p>
                 <p><span className="font-semibold">ID:</span> {member.id}</p>
                 <p><span className="font-semibold">Mob No:</span> {member.phone}</p>
-                <p className="col-span-2"><span className="font-semibold">Aadhaar:</span> {formatAadhaar(member.aadhaar)}</p>
                 <p><span className="font-semibold">Joined:</span> {new Date(member.joinDate).toLocaleDateString()}</p>
-                <p className="col-span-3 font-medium"><span className="font-semibold">Balance:</span> Rs {memberTotalBalance.toLocaleString('en-IN')}</p>
+                 <p className="col-span-2 font-medium"><span className="font-semibold">Deposit Balance:</span> Rs {member.currentBalance.toLocaleString('en-IN')}</p>
+                <p className="col-span-2 font-medium"><span className="font-semibold">Loan Balance:</span> Rs {(member.loanBalance || 0).toLocaleString('en-IN')}</p>
             </div>
             <Card>
                 <CardHeader>
@@ -343,13 +374,13 @@ function PassbookView({ member }: { member: Member }) {
                                     <TableRow key={tx.id}>
                                         <TableCell>{new Date(tx.date as string).toLocaleDateString()}</TableCell>
                                         <TableCell className='capitalize'>
-                                            <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${tx.type === 'deposit' ? 'border-transparent bg-green-100 text-green-800' : 'border-transparent bg-red-100 text-red-800'}`}>
-                                                {tx.type === 'deposit' ? <ArrowUp className="mr-1 h-3 w-3" /> : <ArrowDown className="mr-1 h-3 w-3" />}
+                                            <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${getTxTypeClass(tx.type)}`}>
+                                                {getTxTypeIcon(tx.type)}
                                                 {tx.type}
                                             </div>
                                         </TableCell>
-                                        <TableCell className={`text-right font-medium ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
-                                            {tx.type === 'deposit' ? '+' : '-'}Rs {tx.amount.toLocaleString('en-IN')}
+                                        <TableCell className={`text-right font-medium ${getTxAmountClass(tx.type)}`}>
+                                            {getTxAmountPrefix(tx.type)}Rs {tx.amount.toLocaleString('en-IN')}
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -406,33 +437,36 @@ export default function MembersPage() {
   }
 
   const handleDelete = (member: Member) => {
+    if ((member.loanBalance || 0) > 0) {
+        toast({
+            variant: 'destructive',
+            title: 'Deletion Not Allowed',
+            description: `${member.name} has an outstanding loan balance. Please clear the loan before deleting the member.`,
+        });
+        return;
+    }
     setSelectedMember(member);
     setIsDeleteDialogOpen(true);
   }
   
   const handleStatusChange = async (member: Member, newStatus: 'active' | 'inactive') => {
     if (!user || !firestore) return;
+
+    if (newStatus === 'inactive' && (member.loanBalance || 0) > 0) {
+        toast({
+            variant: 'destructive',
+            title: 'Deactivation Not Allowed',
+            description: `${member.name} has an outstanding loan balance. Please clear the loan before deactivating.`,
+        });
+        return;
+    }
+
     setIsUpdatingStatus(true);
     
     const memberDocRef = doc(firestore, `users/${user.uid}/members`, member.id);
-    const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
 
     try {
-        const batch = writeBatch(firestore);
-        
-        batch.update(memberDocRef, { status: newStatus });
-        
-        const settingsSnap = await getDoc(settingsDocRef);
-        if(settingsSnap.exists()){
-            const settingsData = settingsSnap.data() as GroupSettings;
-            const memberTotalBalance = member.currentBalance + member.interestEarned;
-            const fundChange = newStatus === 'active' ? memberTotalBalance : -memberTotalBalance;
-            const newTotalFund = (settingsData.totalFund || 0) + fundChange;
-            batch.update(settingsDocRef, { totalFund: newTotalFund });
-        }
-
-        await batch.commit();
-
+        await updateDoc(memberDocRef, { status: newStatus });
         toast({
             title: 'Status Updated',
             description: `${member.name} is now ${newStatus}.`,
@@ -465,14 +499,14 @@ export default function MembersPage() {
             const settingsData = settingsSnap.data() as GroupSettings;
             const newTotalMembers = (settingsData.totalMembers || 0) > 0 ? settingsData.totalMembers - 1 : 0;
             
-            // Only adjust fund if the member was active. If inactive, their balance is already removed.
-            const memberTotalBalance = selectedMember.currentBalance + selectedMember.interestEarned;
-            const fundToReclaim = selectedMember.status === 'active' ? memberTotalBalance : 0;
-            const newTotalFund = (settingsData.totalFund || 0) - fundToReclaim;
-            
+            // Adjust group totals
+            const newTotalDeposit = (settingsData.totalDeposit || 0) - selectedMember.currentBalance;
+            const newRemainingFund = newTotalDeposit - ((settingsData.totalLoan || 0) - (settingsData.totalRepayment || 0));
+
             batch.update(settingsDocRef, { 
                 totalMembers: newTotalMembers,
-                totalFund: newTotalFund < 0 ? 0 : newTotalFund
+                totalDeposit: newTotalDeposit,
+                totalFund: newRemainingFund
             });
         }
         
@@ -547,9 +581,8 @@ export default function MembersPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Member ID</TableHead>
                 <TableHead>Mob No.</TableHead>
-                <TableHead>Aadhaar</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
+                <TableHead>Deposit Balance</TableHead>
+                <TableHead className="text-right">Loan Balance</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -559,7 +592,6 @@ export default function MembersPage() {
                   <TableRow key={i}>
                     <TableCell><Skeleton className="h-6 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-6 w-20" /></TableCell>
-                    <TableCell><Skeleton className="h-6 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-6 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-6 w-24" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-6 w-20 ml-auto" /></TableCell>
@@ -587,9 +619,8 @@ export default function MembersPage() {
                     </TableCell>
                     <TableCell>{member.id}</TableCell>
                     <TableCell>{member.phone}</TableCell>
-                    <TableCell>{formatAadhaar(member.aadhaar)}</TableCell>
-                    <TableCell>{new Date(member.joinDate).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right font-mono">₹{(member.currentBalance + member.interestEarned).toLocaleString('en-IN')}</TableCell>
+                    <TableCell className="font-mono">₹{member.currentBalance.toLocaleString('en-IN')}</TableCell>
+                    <TableCell className="text-right font-mono">₹{(member.loanBalance || 0).toLocaleString('en-IN')}</TableCell>
                      <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -631,7 +662,7 @@ export default function MembersPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center">
+                  <TableCell colSpan={6} className="h-24 text-center">
                     {searchQuery ? 'No members match your search.' : 'No members found.'}
                   </TableCell>
                 </TableRow>

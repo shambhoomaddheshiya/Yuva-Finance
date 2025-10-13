@@ -8,19 +8,20 @@ export type Member = {
   joinDate: string;
   status: 'active' | 'inactive';
   totalDeposited: number;
-  totalWithdrawn: number;
-  currentBalance: number;
+  totalWithdrawn: number; // This will now represent total loans taken by the member
+  currentBalance: number; // This represents their deposit balance
   interestEarned: number;
+  loanBalance: number; // New field to track outstanding loan
 };
 
 export type Transaction = {
   id: string;
   memberId: string;
-  type: 'deposit' | 'withdrawal';
+  type: 'deposit' | 'loan' | 'repayment';
   amount: number;
-  date: Timestamp | string; // Support for both old string and new Timestamp dates
+  date: Timestamp | string;
   description?: string;
-  balance: number;
+  balance: number; // For deposits, this is the new deposit balance. For loans/repayments, it's the new loan balance.
 };
 
 export type GroupSettings = {
@@ -28,6 +29,9 @@ export type GroupSettings = {
   monthlyContribution: number;
   interestRate: number;
   totalMembers: number;
-  totalFund: number;
+  totalFund: number; // Will now be remainingFund
   establishedDate: string;
+  totalDeposit?: number;
+  totalLoan?: number;
+  totalRepayment?: number;
 };

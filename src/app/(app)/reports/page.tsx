@@ -24,18 +24,22 @@ import { DateRangePicker } from '@/components/date-range-picker';
 
 
 const reportSchema = z.object({
-  reportType: z.enum(['monthly', 'yearly', 'all']),
+  reportType: z.enum(['monthly', 'yearly', 'all', 'custom']),
   year: z.string().optional(),
   month: z.string().optional(),
-  transactionType: z.enum(['all', 'deposit', 'withdrawal']),
+  customDateRange: z.custom<DateRange>(value => value instanceof Object && 'from' in value && 'to' in value).optional(),
+  transactionType: z.enum(['all', 'deposit', 'loan', 'repayment']),
   format: z.enum(['pdf', 'excel']),
-}).refine(data => {
-    if (data.reportType === 'monthly') return !!data.year && !!data.month;
-    if (data.reportType === 'yearly') return !!data.year;
-    return true; 
-}, {
-    message: 'Please complete all required fields for the selected report type.',
-    path: ['reportType'],
+}).superRefine((data, ctx) => {
+    if (data.reportType === 'monthly' && (!data.year || !data.month)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Year and month are required for monthly reports.", path: ['reportType']});
+    }
+    if (data.reportType === 'yearly' && !data.year) {
+         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Year is required for yearly reports.", path: ['reportType']});
+    }
+    if (data.reportType === 'custom' && !data.customDateRange?.from) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A date range is required for custom reports.", path: ['customDateRange']});
+    }
 });
 
 
@@ -46,10 +50,8 @@ export default function ReportsPage() {
     const [isLoading, setIsLoading] = useState(false);
     
     const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
-
     const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
     
-
     const form = useForm<z.infer<typeof reportSchema>>({
         resolver: zodResolver(reportSchema),
         defaultValues: {
@@ -58,7 +60,7 @@ export default function ReportsPage() {
             format: 'pdf',
         },
     });
-
+    
     const reportType = form.watch('reportType');
     
     const getTransactionDate = (tx: Transaction) => {
@@ -74,7 +76,7 @@ export default function ReportsPage() {
         setIsLoading(true);
 
         try {
-            const { reportType, year, month, transactionType, format: fileFormat } = values;
+            const { reportType, year, month, customDateRange, transactionType, format: fileFormat } = values;
             let startDate: Date | null = null;
             let endDate: Date | null = null;
             let reportTitle: string = 'All Transactions Report';
@@ -90,14 +92,10 @@ export default function ReportsPage() {
                 startDate = startOfYear(new Date(selectedYear, 0));
                 endDate = endOfYear(new Date(selectedYear, 0));
                 reportTitle = `Yearly Report: ${year}`;
-            } else if (reportType !== 'all') {
-                 toast({
-                    variant: 'destructive',
-                    title: 'Invalid Selection',
-                    description: 'Please provide all necessary date information.',
-                });
-                setIsLoading(false);
-                return;
+            } else if (reportType === 'custom' && customDateRange?.from) {
+                startDate = customDateRange.from;
+                endDate = customDateRange.to || customDateRange.from;
+                reportTitle = `Custom Report: ${format(startDate, 'dd/MM/yy')} - ${format(endDate, 'dd/MM/yy')}`;
             }
 
             let transactionsQuery;
@@ -128,20 +126,20 @@ export default function ReportsPage() {
                 return;
             }
 
-            const totalDepositsForPeriod = transactions.filter(tx => tx.type === 'deposit').reduce((sum, tx) => sum + tx.amount, 0);
-            const totalWithdrawalsForPeriod = transactions.filter(tx => tx.type === 'withdrawal').reduce((sum, tx) => sum + tx.amount, 0);
-            const netChange = totalDepositsForPeriod - totalWithdrawalsForPeriod;
-            
-            const totalDepositedAllTime = members.reduce((sum, member) => sum + member.totalDeposited, 0);
-            const totalWithdrawnAllTime = members.reduce((sum, member) => sum + member.totalWithdrawn, 0);
-            const totalRemainingFund = totalDepositedAllTime - totalWithdrawnAllTime;
-            
+            const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
+            const settingsSnap = await getDocs(query(collection(firestore, `users/${user.uid}/groupSettings`)));
+            const settingsData = settingsSnap.docs[0]?.data() as GroupSettings | undefined;
+
+            const totalDeposit = settingsData?.totalDeposit || 0;
+            const totalLoan = settingsData?.totalLoan || 0;
+            const totalRepayment = settingsData?.totalRepayment || 0;
+            const remainingFund = totalDeposit - (totalLoan - totalRepayment);
+
              const summary = {
-                'Total Deposited (All Time)': `Rs. ${totalDepositedAllTime.toLocaleString('en-IN')}`,
-                'Total Remaining Fund (Current Balance)': `Rs. ${totalRemainingFund.toLocaleString('en-IN')}`,
-                'Deposits in this Period': `Rs. ${totalDepositsForPeriod.toLocaleString('en-IN')}`,
-                'Withdrawals in this Period': `Rs. ${totalWithdrawalsForPeriod.toLocaleString('en-IN')}`,
-                'Net Change in this Period': `Rs. ${netChange.toLocaleString('en-IN')}`,
+                'Total Deposits (All Time)': `Rs. ${totalDeposit.toLocaleString('en-IN')}`,
+                'Total Loans (All Time)': `Rs. ${totalLoan.toLocaleString('en-IN')}`,
+                'Total Repayments (All Time)': `Rs. ${totalRepayment.toLocaleString('en-IN')}`,
+                'Remaining Fund (Current Balance)': `Rs. ${remainingFund.toLocaleString('en-IN')}`,
             };
 
             const dataForExport = transactions.map(tx => ({
@@ -244,6 +242,10 @@ export default function ReportsPage() {
                                                     <FormControl><RadioGroupItem value="yearly" /></FormControl>
                                                     <FormLabel className="font-normal">Yearly</FormLabel>
                                                 </FormItem>
+                                                <FormItem className="flex items-center space-x-3 space-y-0">
+                                                    <FormControl><RadioGroupItem value="custom" /></FormControl>
+                                                    <FormLabel className="font-normal">Custom Range</FormLabel>
+                                                </FormItem>
                                             </RadioGroup>
                                         </FormControl>
                                         <FormMessage />
@@ -290,6 +292,20 @@ export default function ReportsPage() {
                                 </div>
                             )}
 
+                             {reportType === 'custom' && (
+                                <FormField
+                                    control={form.control}
+                                    name="customDateRange"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-col">
+                                            <FormLabel>Date range</FormLabel>
+                                            <DateRangePicker value={field.value} onChange={field.onChange} />
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            )}
+
                              <FormField
                                 control={form.control}
                                 name="transactionType"
@@ -300,19 +316,23 @@ export default function ReportsPage() {
                                             <RadioGroup
                                                 onValueChange={field.onChange}
                                                 defaultValue={field.value}
-                                                className="flex flex-col space-y-1"
+                                                className="flex flex-wrap gap-x-4 gap-y-1"
                                             >
                                                 <FormItem className="flex items-center space-x-3 space-y-0">
                                                     <FormControl><RadioGroupItem value="all" /></FormControl>
-                                                    <FormLabel className="font-normal">All Transactions</FormLabel>
+                                                    <FormLabel className="font-normal">All</FormLabel>
                                                 </FormItem>
                                                 <FormItem className="flex items-center space-x-3 space-y-0">
                                                     <FormControl><RadioGroupItem value="deposit" /></FormControl>
-                                                    <FormLabel className="font-normal">Deposits Only</FormLabel>
+                                                    <FormLabel className="font-normal">Deposits</FormLabel>
                                                 </FormItem>
                                                 <FormItem className="flex items-center space-x-3 space-y-0">
-                                                    <FormControl><RadioGroupItem value="withdrawal" /></FormControl>
-                                                    <FormLabel className="font-normal">Withdrawals Only</FormLabel>
+                                                    <FormControl><RadioGroupItem value="loan" /></FormControl>
+                                                    <FormLabel className="font-normal">Loans</FormLabel>
+                                                </FormItem>
+                                                 <FormItem className="flex items-center space-x-3 space-y-0">
+                                                    <FormControl><RadioGroupItem value="repayment" /></FormControl>
+                                                    <FormLabel className="font-normal">Repayments</FormLabel>
                                                 </FormItem>
                                             </RadioGroup>
                                         </FormControl>

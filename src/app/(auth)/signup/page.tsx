@@ -67,6 +67,9 @@ export default function SignUpPage() {
           totalMembers: 0,
           totalFund: 0,
           establishedDate: new Date().toISOString(),
+          totalDeposit: 0,
+          totalLoan: 0,
+          totalRepayment: 0,
         };
         await setDoc(settingsRef, defaultSettings);
       }
