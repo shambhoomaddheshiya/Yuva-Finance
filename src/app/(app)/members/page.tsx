@@ -573,6 +573,12 @@ export default function MembersPage() {
         setSelectedMember(undefined);
     }
   };
+
+  const getInitials = (name: string) => {
+    const names = name.split(' ');
+    const initials = names.map(n => n[0]).join('');
+    return initials.toUpperCase();
+  }
   
   return (
     <div className="space-y-6">
@@ -638,14 +644,19 @@ export default function MembersPage() {
                 filteredMembers.map((member) => (
                   <TableRow key={member.id} className={cn(member.status === 'inactive' && 'bg-muted/50 text-muted-foreground')}>
                     <TableCell className="font-medium">
-                      <div className="flex flex-col">
-                        <span>{member.name}</span>
-                        {member.status === 'active' ? (
-                            <Badge variant="secondary" className='w-fit bg-green-100 text-green-800'>Active</Badge>
-                        ) : (
-                            <Badge variant="secondary" className='w-fit bg-red-100 text-red-800'>Inactive</Badge>
-                        )}
-                      </div>
+                        <div className="flex items-center gap-3">
+                            <Avatar>
+                                <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex flex-col">
+                                <span>{member.name}</span>
+                                {member.status === 'active' ? (
+                                    <Badge variant="secondary" className='w-fit bg-green-100 text-green-800'>Active</Badge>
+                                ) : (
+                                    <Badge variant="secondary" className='w-fit bg-red-100 text-red-800'>Inactive</Badge>
+                                )}
+                            </div>
+                        </div>
                     </TableCell>
                     <TableCell>{member.id}</TableCell>
                     <TableCell>{member.phone}</TableCell>
@@ -747,5 +758,7 @@ export default function MembersPage() {
     </div>
   );
 }
+
+    
 
     
