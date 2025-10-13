@@ -14,23 +14,24 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Banknote, Users, HandCoins, PiggyBank, Landmark } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
+type MemberAmount = {
+  name: string;
+  amount: number;
+}
+
 function SummaryDetailCard({ 
   title, 
   icon: Icon, 
-  amount, 
-  memberCount, 
-  memberNames, 
+  totalAmount, 
+  members, 
   loading,
-  amountLabel,
   membersLabel
 }: { 
   title: string; 
   icon: React.ElementType; 
-  amount: number; 
-  memberCount: number; 
-  memberNames: string[]; 
+  totalAmount: number; 
+  members: MemberAmount[];
   loading: boolean;
-  amountLabel: string;
   membersLabel: string;
 }) {
   return (
@@ -49,15 +50,20 @@ function SummaryDetailCard({
           <div className="flex justify-between items-start">
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                {membersLabel}: <span className="font-semibold">{memberCount}</span>
+                {membersLabel}: <span className="font-semibold">{members.length}</span>
               </p>
-              {memberNames.length > 0 && (
+              {members.length > 0 && (
                 <Accordion type="single" collapsible className="w-full max-w-xs">
                   <AccordionItem value="item-1">
                     <AccordionTrigger className="text-sm py-2">View Members</AccordionTrigger>
                     <AccordionContent>
-                      <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
-                        {memberNames.map((name, index) => <li key={index}>{name}</li>)}
+                      <ul className="list-none text-sm text-muted-foreground space-y-1">
+                        {members.map((member, index) => (
+                          <li key={index} className="flex justify-between">
+                            <span>{member.name}</span>
+                            <span className="font-medium text-foreground">₹{member.amount.toLocaleString('en-IN')}</span>
+                          </li>
+                        ))}
                       </ul>
                     </AccordionContent>
                   </AccordionItem>
@@ -65,7 +71,7 @@ function SummaryDetailCard({
               )}
             </div>
             <div className="text-2xl font-bold font-headline text-right">
-              ₹{amount.toLocaleString('en-IN')}
+              ₹{totalAmount.toLocaleString('en-IN')}
             </div>
           </div>
         )}
@@ -96,16 +102,18 @@ export default function SummaryPage() {
   };
   
   const monthlySummary = useMemo(() => {
-    if (!transactions || !members) {
-      return { 
-        totalInterest: 0, 
-        totalDeposit: 0, 
-        depositMembers: [], 
+    const initialSummary = {
+        totalInterest: 0,
+        totalDeposit: 0,
+        depositMembers: [] as MemberAmount[],
         totalLoan: 0,
-        loanTakers: [], 
+        loanTakers: [] as MemberAmount[],
         totalRepayment: 0,
-        loanRepayers: [] 
-      };
+        repaymentMembers: [] as MemberAmount[],
+    };
+
+    if (!transactions || !members) {
+      return initialSummary;
     }
     
     const year = parseInt(selectedYear);
@@ -119,21 +127,54 @@ export default function SummaryPage() {
     
     const memberMap = new Map(members.map(m => [m.id, m.name]));
 
-    const totalInterest = filteredTransactions
-      .filter(t => t.type === 'repayment')
-      .reduce((sum, t) => sum + (t.interest || 0), 0);
-    
-    const depositData = filteredTransactions.filter(t => t.type === 'deposit');
-    const totalDeposit = depositData.reduce((sum, t) => sum + t.amount, 0);
-    const depositMembers = [...new Set(depositData.map(t => memberMap.get(t.memberId) || 'Unknown'))];
-    
-    const loanData = filteredTransactions.filter(t => t.type === 'loan');
-    const totalLoan = loanData.reduce((sum, t) => sum + t.amount, 0);
-    const loanTakers = [...new Set(loanData.map(t => memberMap.get(t.memberId) || 'Unknown'))];
+    const memberAggregates = new Map<string, { deposit: number; loan: number; repayment: number, interest: number }>();
 
-    const repaymentData = filteredTransactions.filter(t => t.type === 'repayment');
-    const totalRepayment = repaymentData.reduce((sum, t) => sum + t.amount, 0);
-    const loanRepayers = [...new Set(repaymentData.map(t => memberMap.get(t.memberId) || 'Unknown'))];
+    for (const tx of filteredTransactions) {
+      const memberId = tx.memberId;
+      if (!memberAggregates.has(memberId)) {
+        memberAggregates.set(memberId, { deposit: 0, loan: 0, repayment: 0, interest: 0 });
+      }
+      const memberData = memberAggregates.get(memberId)!;
+
+      switch (tx.type) {
+        case 'deposit':
+          memberData.deposit += tx.amount;
+          break;
+        case 'loan':
+          memberData.loan += tx.amount;
+          break;
+        case 'repayment':
+          memberData.repayment += tx.amount;
+          memberData.interest += (tx.interest || 0);
+          break;
+      }
+    }
+    
+    let totalInterest = 0;
+    let totalDeposit = 0;
+    const depositMembers: MemberAmount[] = [];
+    let totalLoan = 0;
+    const loanTakers: MemberAmount[] = [];
+    let totalRepayment = 0;
+    const repaymentMembers: MemberAmount[] = [];
+
+    for (const [memberId, data] of memberAggregates.entries()) {
+        const name = memberMap.get(memberId) || 'Unknown';
+        totalInterest += data.interest;
+
+        if (data.deposit > 0) {
+            totalDeposit += data.deposit;
+            depositMembers.push({ name, amount: data.deposit });
+        }
+        if (data.loan > 0) {
+            totalLoan += data.loan;
+            loanTakers.push({ name, amount: data.loan });
+        }
+        if (data.repayment > 0) {
+            totalRepayment += data.repayment;
+            repaymentMembers.push({ name, amount: data.repayment });
+        }
+    }
 
     return { 
       totalInterest, 
@@ -142,7 +183,7 @@ export default function SummaryPage() {
       totalLoan,
       loanTakers, 
       totalRepayment,
-      loanRepayers 
+      repaymentMembers
     };
 
   }, [transactions, members, selectedYear, selectedMonth]);
@@ -185,41 +226,33 @@ export default function SummaryPage() {
            <SummaryDetailCard
               title="Interest Earned"
               icon={Banknote}
-              amount={monthlySummary.totalInterest}
-              memberCount={monthlySummary.loanRepayers.length}
-              memberNames={monthlySummary.loanRepayers}
+              totalAmount={monthlySummary.totalInterest}
+              members={monthlySummary.repaymentMembers}
               loading={loading}
-              amountLabel="Total Interest Collected"
               membersLabel="From Members"
            />
            <SummaryDetailCard
               title="Deposits Made"
               icon={PiggyBank}
-              amount={monthlySummary.totalDeposit}
-              memberCount={monthlySummary.depositMembers.length}
-              memberNames={monthlySummary.depositMembers}
+              totalAmount={monthlySummary.totalDeposit}
+              members={monthlySummary.depositMembers}
               loading={loading}
-              amountLabel="Total Deposited"
               membersLabel="By Members"
            />
            <SummaryDetailCard
               title="Loans Disbursed"
               icon={Landmark}
-              amount={monthlySummary.totalLoan}
-              memberCount={monthlySummary.loanTakers.length}
-              memberNames={monthlySummary.loanTakers}
+              totalAmount={monthlySummary.totalLoan}
+              members={monthlySummary.loanTakers}
               loading={loading}
-              amountLabel="Total Loan Amount"
               membersLabel="To Members"
            />
            <SummaryDetailCard
               title="Loans Repaid"
               icon={HandCoins}
-              amount={monthlySummary.totalRepayment}
-              memberCount={monthlySummary.loanRepayers.length}
-              memberNames={monthlySummary.loanRepayers}
+              totalAmount={monthlySummary.totalRepayment}
+              members={monthlySummary.repaymentMembers}
               loading={loading}
-              amountLabel="Total Repayment Amount"
               membersLabel="By Members"
            />
         </CardContent>
@@ -227,5 +260,6 @@ export default function SummaryPage() {
     </div>
   );
 }
+
 
 
