@@ -8,29 +8,71 @@ import { useCollection } from '@/firebase/firestore/use-collection';
 import { Member, Transaction } from '@/types';
 import { format, getYear } from 'date-fns';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Banknote, Users, HandCoins, PiggyBank } from 'lucide-react';
+import { Banknote, Users, HandCoins, PiggyBank, Landmark } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
-function SummaryStatCard({ title, value, icon: Icon, loading }: { title: string; value: string | number; icon: React.ElementType; loading: boolean; }) {
+function SummaryDetailCard({ 
+  title, 
+  icon: Icon, 
+  amount, 
+  memberCount, 
+  memberNames, 
+  loading,
+  amountLabel,
+  membersLabel
+}: { 
+  title: string; 
+  icon: React.ElementType; 
+  amount: number; 
+  memberCount: number; 
+  memberNames: string[]; 
+  loading: boolean;
+  amountLabel: string;
+  membersLabel: string;
+}) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg font-headline">{title}</CardTitle>
+          <Icon className="h-5 w-5 text-muted-foreground" />
+        </div>
       </CardHeader>
       <CardContent>
         {loading ? (
-          <Skeleton className="h-8 w-3/4" />
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-3/4" />
+            <Skeleton className="h-6 w-1/2" />
+          </div>
         ) : (
-          <div className="text-2xl font-bold font-headline">{value}</div>
+          <div className="space-y-2">
+            <div className="text-2xl font-bold font-headline">
+              ₹{amount.toLocaleString('en-IN')}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {membersLabel}: <span className="font-semibold">{memberCount}</span>
+            </p>
+            {memberNames.length > 0 && (
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="item-1">
+                  <AccordionTrigger className="text-sm py-2">View Members</AccordionTrigger>
+                  <AccordionContent>
+                    <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
+                      {memberNames.map((name, index) => <li key={index}>{name}</li>)}
+                    </ul>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
   );
 }
-
 
 export default function SummaryPage() {
   const { user } = useUser();
@@ -55,32 +97,53 @@ export default function SummaryPage() {
   
   const monthlySummary = useMemo(() => {
     if (!transactions || !members) {
-      return { totalInterest: 0, totalDeposit: 0, depositMembers: 0, loanTakers: 0, loanRepayers: 0 };
+      return { 
+        totalInterest: 0, 
+        totalDeposit: 0, 
+        depositMembers: [], 
+        totalLoan: 0,
+        loanTakers: [], 
+        totalRepayment: 0,
+        loanRepayers: [] 
+      };
     }
     
     const year = parseInt(selectedYear);
     const month = parseInt(selectedMonth);
 
+    const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
     const filteredTransactions = transactions.filter(tx => {
       const txDate = getTransactionDate(tx);
-      return txDate.getFullYear() === year && txDate.getMonth() === month;
+      return txDate.getFullYear() === year && txDate.getMonth() === month && activeMemberIds.has(tx.memberId);
     });
     
-    const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
-    const activeFilteredTransactions = filteredTransactions.filter(t => activeMemberIds.has(t.memberId));
+    const memberMap = new Map(members.map(m => [m.id, m.name]));
 
-    const totalInterest = activeFilteredTransactions
+    const totalInterest = filteredTransactions
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.interest || 0), 0);
-
-    const depositData = activeFilteredTransactions.filter(t => t.type === 'deposit');
-    const totalDeposit = depositData.reduce((sum, t) => sum + t.amount, 0);
-    const depositMembers = new Set(depositData.map(t => t.memberId)).size;
     
-    const loanTakers = new Set(activeFilteredTransactions.filter(t => t.type === 'loan').map(t => t.memberId)).size;
-    const loanRepayers = new Set(activeFilteredTransactions.filter(t => t.type === 'repayment').map(t => t.memberId)).size;
+    const depositData = filteredTransactions.filter(t => t.type === 'deposit');
+    const totalDeposit = depositData.reduce((sum, t) => sum + t.amount, 0);
+    const depositMembers = [...new Set(depositData.map(t => memberMap.get(t.memberId) || 'Unknown'))];
+    
+    const loanData = filteredTransactions.filter(t => t.type === 'loan');
+    const totalLoan = loanData.reduce((sum, t) => sum + t.amount, 0);
+    const loanTakers = [...new Set(loanData.map(t => memberMap.get(t.memberId) || 'Unknown'))];
 
-    return { totalInterest, totalDeposit, depositMembers, loanTakers, loanRepayers };
+    const repaymentData = filteredTransactions.filter(t => t.type === 'repayment');
+    const totalRepayment = repaymentData.reduce((sum, t) => sum + t.amount, 0);
+    const loanRepayers = [...new Set(repaymentData.map(t => memberMap.get(t.memberId) || 'Unknown'))];
+
+    return { 
+      totalInterest, 
+      totalDeposit, 
+      depositMembers,
+      totalLoan,
+      loanTakers, 
+      totalRepayment,
+      loanRepayers 
+    };
 
   }, [transactions, members, selectedYear, selectedMonth]);
 
@@ -116,57 +179,52 @@ export default function SummaryPage() {
           <CardTitle className="font-headline">
              Summary for {format(new Date(parseInt(selectedYear), parseInt(selectedMonth)), 'MMMM yyyy')}
           </CardTitle>
+          <CardDescription>An overview of your group's financial activity for the selected month.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-           <SummaryStatCard
-              title="Total Interest Earned"
-              value={loading ? '...' : `₹${monthlySummary.totalInterest.toLocaleString('en-IN')}`}
+        <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+           <SummaryDetailCard
+              title="Interest Earned"
               icon={Banknote}
+              amount={monthlySummary.totalInterest}
+              memberCount={monthlySummary.loanRepayers.length}
+              memberNames={monthlySummary.loanRepayers}
               loading={loading}
+              amountLabel="Total Interest Collected"
+              membersLabel="From Members"
            />
-            <SummaryStatCard
-              title="Total Deposits"
-              value={loading ? '...' : `₹${monthlySummary.totalDeposit.toLocaleString('en-IN')}`}
+           <SummaryDetailCard
+              title="Deposits Made"
               icon={PiggyBank}
+              amount={monthlySummary.totalDeposit}
+              memberCount={monthlySummary.depositMembers.length}
+              memberNames={monthlySummary.depositMembers}
               loading={loading}
+              amountLabel="Total Deposited"
+              membersLabel="By Members"
            />
-           <SummaryStatCard
-              title="Members Deposited"
-              value={loading ? '...' : monthlySummary.depositMembers}
-              icon={Users}
+           <SummaryDetailCard
+              title="Loans Disbursed"
+              icon={Landmark}
+              amount={monthlySummary.totalLoan}
+              memberCount={monthlySummary.loanTakers.length}
+              memberNames={monthlySummary.loanTakers}
               loading={loading}
+              amountLabel="Total Loan Amount"
+              membersLabel="To Members"
            />
-            <SummaryStatCard
-              title="Members Took Loan"
-              value={loading ? '...' : monthlySummary.loanTakers}
-              icon={Users}
-              loading={loading}
-           />
-            <SummaryStatCard
-              title="Members Repaid Loan"
-              value={loading ? '...' : monthlySummary.loanRepayers}
+           <SummaryDetailCard
+              title="Loans Repaid"
               icon={HandCoins}
+              amount={monthlySummary.totalRepayment}
+              memberCount={monthlySummary.loanRepayers.length}
+              memberNames={monthlySummary.loanRepayers}
               loading={loading}
+              amountLabel="Total Repayment Amount"
+              membersLabel="By Members"
            />
         </CardContent>
       </Card>
-
-       <Card>
-         <CardHeader>
-           <CardTitle className="font-headline">
-              Final Result
-           </CardTitle>
-         </CardHeader>
-         <CardContent className="text-muted-foreground">
-            {loading ? <Skeleton className="h-6 w-full" /> : (
-              <p>
-                In {format(new Date(parseInt(selectedYear), parseInt(selectedMonth)), 'MMMM yyyy')}, the group earned a total interest of <span className="font-bold text-primary">₹{monthlySummary.totalInterest.toLocaleString('en-IN')}</span>. 
-                A total of <span className="font-bold text-primary">₹{monthlySummary.totalDeposit.toLocaleString('en-IN')}</span> was deposited by <span className="font-bold text-primary">{monthlySummary.depositMembers}</span> member(s). 
-                During this period, <span className="font-bold text-primary">{monthlySummary.loanTakers}</span> member(s) took out new loans, and <span className="font-bold text-primary">{monthlySummary.loanRepayers}</span> member(s) made repayments.
-              </p>
-            )}
-         </CardContent>
-       </Card>
     </div>
   );
 }
+
