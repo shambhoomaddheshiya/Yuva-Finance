@@ -1,6 +1,7 @@
 
 'use client';
 
+import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
@@ -48,21 +49,39 @@ export default function DashboardPage() {
   const { user } = useUser();
   const firestore = useFirestore();
 
-  const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings`, 'settings') : null, [user, firestore]);
   const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
   const transactionsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
 
-  const { data: settings, isLoading: settingsLoading } = useDoc<GroupSettings>(settingsRef);
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
   const { data: transactions, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
   
-  const loading = settingsLoading || membersLoading || txLoading;
+  const loading = membersLoading || txLoading;
 
-  const totalDeposit = settings?.totalDeposit || 0;
-  const totalLoan = settings?.totalLoan || 0;
-  const totalRepayment = settings?.totalRepayment || 0;
-  const totalInterest = settings?.totalInterest || 0;
-  const remainingFund = totalDeposit - (totalLoan - totalRepayment) + totalInterest;
+  const { totalDeposit, totalLoan, totalRepayment, totalInterest, remainingFund } = useMemo(() => {
+    if (!transactions) {
+      return { totalDeposit: 0, totalLoan: 0, totalRepayment: 0, totalInterest: 0, remainingFund: 0 };
+    }
+    const totalDeposit = transactions
+      .filter(t => t.type === 'deposit')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const totalLoan = transactions
+      .filter(t => t.type === 'loan')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const totalRepayment = transactions
+      .filter(t => t.type === 'repayment')
+      .reduce((sum, t) => sum + (t.principal || 0), 0);
+    
+    const totalInterest = transactions
+      .filter(t => t.type === 'repayment')
+      .reduce((sum, t) => sum + (t.interest || 0), 0);
+
+    const remainingFund = totalDeposit - (totalLoan - totalRepayment) + totalInterest;
+    
+    return { totalDeposit, totalLoan, totalRepayment, totalInterest, remainingFund };
+  }, [transactions]);
+
 
   const chartData = [
     { name: 'Deposits', total: totalDeposit, fill: 'hsl(var(--primary))' },
@@ -118,30 +137,30 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Remaining Fund"
-          value={settings ? `₹${remainingFund.toLocaleString('en-IN')}` : '...'}
+          value={loading ? '...' : `₹${remainingFund.toLocaleString('en-IN')}`}
           icon={Banknote}
-          loading={settingsLoading}
+          loading={loading}
           description="Cash available in group"
         />
          <StatCard
           title="Total Deposits"
-          value={settings ? `₹${totalDeposit.toLocaleString('en-IN')}` : '...'}
+          value={loading ? '...' : `₹${totalDeposit.toLocaleString('en-IN')}`}
           icon={PiggyBank}
-          loading={settingsLoading}
+          loading={loading}
           description="From all members"
         />
         <StatCard
           title="Total Loan Disbursed"
-          value={settings ? `₹${totalLoan.toLocaleString('en-IN')}` : '...'}
+          value={loading ? '...' : `₹${totalLoan.toLocaleString('en-IN')}`}
           icon={Landmark}
-          loading={settingsLoading}
+          loading={loading}
           description="Outstanding + Repaid Principal"
         />
          <StatCard
           title="Total Interest Earned"
-          value={settings ? `₹${totalInterest.toLocaleString('en-IN')}` : '...'}
+          value={loading ? '...' : `₹${totalInterest.toLocaleString('en-IN')}`}
           icon={LibraryBig}
-          loading={settingsLoading}
+          loading={loading}
           description="From loan repayments"
         />
       </div>
