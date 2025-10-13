@@ -306,6 +306,7 @@ function PassbookView({ member }: { member: Member }) {
     const { data: transactions, isLoading } = useCollection<Transaction>(transactionsRef);
 
     const getTransactionDate = (tx: Transaction): Date => {
+        if (!tx?.date) return new Date();
         if (tx.date instanceof Timestamp) {
             return tx.date.toDate();
         }
@@ -316,10 +317,32 @@ function PassbookView({ member }: { member: Member }) {
         return new Date(tx.date as string);
     };
   
-    const sortedTransactions = useMemo(() => {
-        return transactions
-          ? [...transactions].sort((a, b) => getTransactionDate(b).getTime() - getTransactionDate(a).getTime())
-          : [];
+    const { sortedTransactions, depositBalance, loanBalance } = useMemo(() => {
+        if (!transactions) {
+            return { sortedTransactions: [], depositBalance: 0, loanBalance: 0 };
+        }
+        
+        const sorted = [...transactions].sort((a, b) => getTransactionDate(b).getTime() - getTransactionDate(a).getTime());
+        
+        const depositTotal = sorted
+            .filter(t => t.type === 'deposit')
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        const loanTotal = sorted
+            .filter(t => t.type === 'loan')
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const repaymentTotal = sorted
+            .filter(t => t.type === 'repayment')
+            .reduce((sum, t) => sum + (t.principal || 0), 0);
+
+        const calculatedLoanBalance = loanTotal - repaymentTotal;
+
+        return { 
+            sortedTransactions: sorted, 
+            depositBalance: depositTotal, 
+            loanBalance: calculatedLoanBalance 
+        };
     }, [transactions]);
     
     const getTxTypeClass = (type: Transaction['type']) => {
@@ -361,8 +384,8 @@ function PassbookView({ member }: { member: Member }) {
                 <p><span className="font-semibold">ID:</span> {member.id}</p>
                 <p><span className="font-semibold">Mob No:</span> {member.phone}</p>
                 <p><span className="font-semibold">Joined:</span> {new Date(member.joinDate).toLocaleDateString()}</p>
-                 <p className="col-span-2 font-medium"><span className="font-semibold">Deposit Balance:</span> Rs {member.currentBalance.toLocaleString('en-IN')}</p>
-                <p className="col-span-2 font-medium"><span className="font-semibold">Loan Balance:</span> Rs {(member.loanBalance || 0).toLocaleString('en-IN')}</p>
+                 <p className="col-span-2 font-medium"><span className="font-semibold">Deposit Balance:</span> Rs {depositBalance.toLocaleString('en-IN')}</p>
+                <p className="col-span-2 font-medium"><span className="font-semibold">Loan Balance:</span> Rs {loanBalance.toLocaleString('en-IN')}</p>
             </div>
             <Card>
                 <CardHeader>
