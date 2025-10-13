@@ -5,10 +5,10 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { collection, getDocs, query, where, Timestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { Member, Transaction, GroupSettings } from '@/types';
+import { Member, Transaction } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -104,26 +104,46 @@ export default function ReportsPage() {
                 reportTitle = `Custom Report: ${format(startDate, 'dd/MM/yy')} - ${format(endDate, 'dd/MM/yy')}`;
             }
 
-            let transactionsQuery;
+            // Always fetch all transactions to calculate overall summary correctly
+            const allTransactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`));
+            const allTransactionsSnapshot = await getDocs(allTransactionsQuery);
+            const allTransactions = allTransactionsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction));
+            
+            // Calculate totals from ALL transactions
+            const totalDeposit = allTransactions
+                .filter(t => t.type === 'deposit')
+                .reduce((sum, t) => sum + t.amount, 0);
+            
+            const totalLoan = allTransactions
+                .filter(t => t.type === 'loan')
+                .reduce((sum, t) => sum + t.amount, 0);
+
+            const totalRepayment = allTransactions
+                .filter(t => t.type === 'repayment')
+                .reduce((sum, t) => sum + (t.principal || 0), 0);
+            
+            const totalInterest = allTransactions
+                .filter(t => t.type === 'repayment')
+                .reduce((sum, t) => sum + (t.interest || 0), 0);
+            
+            const remainingFund = totalDeposit - (totalLoan - totalRepayment) + totalInterest;
+
+
+            // Filter transactions for the actual report body
+            let transactionsForReport = allTransactions;
+
             if (startDate && endDate) {
-                transactionsQuery = query(
-                    collection(firestore, `users/${user.uid}/transactions`),
-                    where('date', '>=', Timestamp.fromDate(startDate)),
-                    where('date', '<=', Timestamp.fromDate(endDate))
-                );
-            } else {
-                transactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`));
+                 transactionsForReport = transactionsForReport.filter(tx => {
+                    const txDate = getTransactionDate(tx);
+                    return txDate >= startDate! && txDate <= endDate!;
+                });
             }
-
-
-            const querySnapshot = await getDocs(transactionsQuery);
-            let transactions = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction));
             
             if (transactionType !== 'all') {
-                transactions = transactions.filter(tx => tx.type === transactionType);
+                transactionsForReport = transactionsForReport.filter(tx => tx.type === transactionType);
             }
             
-            if (transactions.length === 0) {
+            if (transactionsForReport.length === 0) {
                 toast({
                     title: 'No Data',
                     description: `No ${transactionType !== 'all' ? transactionType + ' ' : ''}transactions found for the selected period.`,
@@ -131,16 +151,6 @@ export default function ReportsPage() {
                 setIsLoading(false);
                 return;
             }
-
-            const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
-            const settingsSnap = await getDoc(settingsDocRef);
-            const settingsData = settingsSnap.data() as GroupSettings | undefined;
-
-            const totalDeposit = settingsData?.totalDeposit || 0;
-            const totalLoan = settingsData?.totalLoan || 0;
-            const totalRepayment = settingsData?.totalRepayment || 0;
-            const totalInterest = settingsData?.totalInterest || 0;
-            const remainingFund = totalDeposit - (totalLoan - totalRepayment) + totalInterest;
 
              const summary = {
                 'Total Deposits (All Time)': `Rs. ${totalDeposit.toLocaleString('en-IN')}`,
@@ -150,7 +160,7 @@ export default function ReportsPage() {
                 'Remaining Fund (Current Balance)': `Rs. ${remainingFund.toLocaleString('en-IN')}`,
             };
 
-            const dataForExport = transactions.map(tx => ({
+            const dataForExport = transactionsForReport.map(tx => ({
                 'Member Name': members.find(m => m.id === tx.memberId)?.name || 'Unknown',
                 'Date': format(getTransactionDate(tx), 'yyyy-MM-dd'),
                 'Type': tx.type,
