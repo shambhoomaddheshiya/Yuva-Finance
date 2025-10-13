@@ -22,7 +22,9 @@ interface DateRangePickerProps extends React.HTMLAttributes<HTMLDivElement> {
 
 const DateRangePicker = React.memo(
   ({ className, value, onChange }: DateRangePickerProps) => {
-    const [displayMonth, setDisplayMonth] = React.useState<Date>(new Date());
+    const [displayMonth, setDisplayMonth] = React.useState<Date>(
+      value?.from || new Date()
+    );
     
     return (
       <div className={cn('grid gap-2', className)}>
