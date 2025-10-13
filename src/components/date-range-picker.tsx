@@ -22,6 +22,8 @@ interface DateRangePickerProps extends React.HTMLAttributes<HTMLDivElement> {
 
 const DateRangePicker = React.memo(
   ({ className, value, onChange }: DateRangePickerProps) => {
+    // This state controls the first month shown in the calendar.
+    // It's initialized to the selected 'from' date or the current date.
     const [displayMonth, setDisplayMonth] = React.useState<Date>(
       value?.from || new Date()
     );
@@ -55,12 +57,13 @@ const DateRangePicker = React.memo(
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
             <Calendar
-              initialFocus
               mode="range"
               selected={value}
               onSelect={onChange}
               numberOfMonths={2}
+              // Control the displayed month with our independent state
               month={displayMonth}
+              // Update our independent state when the user navigates
               onMonthChange={setDisplayMonth}
             />
           </PopoverContent>
