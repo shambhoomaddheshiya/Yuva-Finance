@@ -686,7 +686,7 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
   )
 }
 
-function DateFilterControls({ filter, selectedYear, setSelectedYear, selectedMonth, setSelectedMonth }) {
+function DateFilterControls({ dateFilter, selectedYear, setSelectedYear, selectedMonth, setSelectedMonth }) {
     const years = Array.from({ length: 10 }, (_, i) => getYear(new Date()) - i);
     const months = Array.from({ length: 12 }, (_, i) => ({
         value: String(i),
@@ -696,9 +696,9 @@ function DateFilterControls({ filter, selectedYear, setSelectedYear, selectedMon
     const [endDate, setEndDate] = useState<Date | undefined>();
 
 
-    if (filter !== 'monthly' && filter !== 'yearly' && filter !== 'custom') return null;
+    if (dateFilter !== 'monthly' && dateFilter !== 'yearly' && dateFilter !== 'custom') return null;
 
-    if (filter === 'custom') {
+    if (dateFilter === 'custom') {
         return (
             <div className="flex items-center gap-2">
                  <Popover>
@@ -757,7 +757,7 @@ function DateFilterControls({ filter, selectedYear, setSelectedYear, selectedMon
                     {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
                 </SelectContent>
             </Select>
-            {filter === 'monthly' && (
+            {dateFilter === 'monthly' && (
                 <Select onValueChange={setSelectedMonth} value={selectedMonth}>
                    <SelectTrigger className="w-[140px]"><SelectValue placeholder="Month" /></SelectTrigger>
                     <SelectContent>
@@ -787,7 +787,8 @@ export default function TransactionsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [filter, setFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('all');
   const [selectedYear, setSelectedYear] = useState<string>(String(getYear(new Date())));
   const [selectedMonth, setSelectedMonth] = useState<string>(String(new Date().getMonth()));
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
@@ -842,18 +843,18 @@ export default function TransactionsPage() {
     
     let intermediateList = [...transactions].sort((a, b) => getTransactionDate(b).getTime() - getTransactionDate(a).getTime());
 
-    // Date and Type Filtering
+    // Type Filtering
+    if (typeFilter !== 'all') {
+        intermediateList = intermediateList.filter(tx => tx.type === typeFilter);
+    }
+    
+    // Date Filtering
     intermediateList = intermediateList.filter(tx => {
         const txDate = getTransactionDate(tx);
         const txYear = getYear(txDate);
         const txMonth = txDate.getMonth();
 
-        switch (filter) {
-            case 'deposit':
-            case 'loan':
-            case 'repayment':
-                if(filter !== tx.type) return false;
-                break;
+        switch (dateFilter) {
             case 'monthly':
                 if (txYear !== parseInt(selectedYear) || txMonth !== parseInt(selectedMonth)) return false;
                 break;
@@ -889,18 +890,21 @@ export default function TransactionsPage() {
         (tx.description && tx.description.toLowerCase().includes(lowercasedQuery))
       );
     });
-  }, [transactions, members, searchQuery, filter, selectedYear, selectedMonth, customDateRange]);
+  }, [transactions, members, searchQuery, typeFilter, dateFilter, selectedYear, selectedMonth, customDateRange]);
   
   const totalFilteredAmount = useMemo(() => {
     return filteredTransactions.reduce((sum, tx) => sum + tx.amount, 0);
   }, [filteredTransactions]);
 
   const filterTitle = useMemo(() => {
-    if (filter === 'all') return 'All Transactions Total';
-    if (filter === 'monthly') return `Monthly Total (${format(new Date(parseInt(selectedYear), parseInt(selectedMonth)), 'MMM yyyy')})`;
-    if (filter === 'yearly') return `Yearly Total (${selectedYear})`;
-    return `Filtered ${filter.charAt(0).toUpperCase() + filter.slice(1)}s Total`;
-  }, [filter, selectedYear, selectedMonth]);
+    let title = 'Filtered Total';
+    if(typeFilter !== 'all') {
+        title = `Filtered ${typeFilter.charAt(0).toUpperCase() + typeFilter.slice(1)}s Total`
+    }
+    if (dateFilter === 'monthly') return `${title} (${format(new Date(parseInt(selectedYear), parseInt(selectedMonth)), 'MMM yyyy')})`;
+    if (dateFilter === 'yearly') return `${title} (${selectedYear})`;
+    return title;
+  }, [typeFilter, dateFilter, selectedYear, selectedMonth]);
 
 
   const handleEdit = (transaction: Transaction) => {
@@ -1044,23 +1048,34 @@ export default function TransactionsPage() {
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-4">
-              <RadioGroup
-                value={filter}
-                onValueChange={setFilter}
-                className="flex flex-wrap items-center gap-x-4 gap-y-2"
-              >
-                <Label className="font-semibold">Show:</Label>
-                <div className="flex items-center space-x-2"><RadioGroupItem value="all" id="all" /><Label htmlFor="all">All</Label></div>
-                <div className="flex items-center space-x-2"><RadioGroupItem value="deposit" id="deposit" /><Label htmlFor="deposit">Deposits</Label></div>
-                <div className="flex items-center space-x-2"><RadioGroupItem value="loan" id="loan" /><Label htmlFor="loan">Loans</Label></div>
-                <div className="flex items-center space-x-2"><RadioGroupItem value="repayment" id="repayment" /><Label htmlFor="repayment">Repayments</Label></div>
-                <div className="flex items-center space-x-2"><RadioGroupItem value="monthly" id="monthly" /><Label htmlFor="monthly">Monthly</Label></div>
-                <div className="flex items-center space-x-2"><RadioGroupItem value="yearly" id="yearly" /><Label htmlFor="yearly">Yearly</Label></div>
-              </RadioGroup>
-              
-              <DateFilterControls 
-                 filter={filter}
+            <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex items-center gap-4">
+                  <Label className="font-semibold shrink-0">Filter by Type:</Label>
+                  <RadioGroup
+                    value={typeFilter}
+                    onValueChange={setTypeFilter}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-2"
+                  >
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="all" id="all-type" /><Label htmlFor="all-type">All</Label></div>
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="deposit" id="deposit" /><Label htmlFor="deposit">Deposits</Label></div>
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="loan" id="loan" /><Label htmlFor="loan">Loans</Label></div>
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="repayment" id="repayment" /><Label htmlFor="repayment">Repayments</Label></div>
+                  </RadioGroup>
+                </div>
+                <div className="flex items-center gap-4">
+                  <Label className="font-semibold shrink-0">Filter by Date:</Label>
+                  <RadioGroup
+                    value={dateFilter}
+                    onValueChange={setDateFilter}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-2"
+                  >
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="all" id="all-date" /><Label htmlFor="all-date">All Time</Label></div>
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="monthly" id="monthly" /><Label htmlFor="monthly">Monthly</Label></div>
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="yearly" id="yearly" /><Label htmlFor="yearly">Yearly</Label></div>
+                  </RadioGroup>
+                </div>
+                 <DateFilterControls 
+                 dateFilter={dateFilter}
                  selectedYear={selectedYear}
                  setSelectedYear={setSelectedYear}
                  selectedMonth={selectedMonth}
@@ -1131,7 +1146,7 @@ export default function TransactionsPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center">
-                     {searchQuery || filter !== 'all' ? 'No transactions match your filters.' : 'No transactions found.'}
+                     {searchQuery || typeFilter !== 'all' || dateFilter !== 'all' ? 'No transactions match your filters.' : 'No transactions found.'}
                   </TableCell>
                 </TableRow>
               )}
