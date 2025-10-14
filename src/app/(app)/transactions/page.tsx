@@ -806,11 +806,9 @@ export default function TransactionsPage() {
   
   const transactionsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
   const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
-  const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings/settings`) : null, [user, firestore]);
-
+  
   const { data: transactions, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
-  const { data: settings, isLoading: settingsLoading } = useDoc<GroupSettings>(settingsRef);
   
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -825,7 +823,7 @@ export default function TransactionsPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>(String(new Date().getMonth()));
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
 
-  const loading = txLoading || membersLoading || settingsLoading;
+  const loading = txLoading || membersLoading;
   
   const getTransactionDate = (tx: Transaction) => {
     if (tx.date instanceof Timestamp) {
@@ -938,6 +936,35 @@ export default function TransactionsPage() {
     return totals;
   }, [filteredTransactions]);
 
+  const { totalActiveFund, totalRemainingFund } = useMemo(() => {
+    if (!transactions || !members) {
+      return { totalActiveFund: 0, totalRemainingFund: 0 };
+    }
+    const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
+    const activeTransactions = transactions.filter(t => activeMemberIds.has(t.memberId));
+
+    const memberDeposits = activeTransactions
+      .filter(t => t.type === 'deposit')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const totalInterest = activeTransactions
+      .filter(t => t.type === 'repayment')
+      .reduce((sum, t) => sum + (t.interest || 0), 0);
+    
+    const totalLoan = activeTransactions
+      .filter(t => t.type === 'loan')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const totalRepayment = activeTransactions
+      .filter(t => t.type === 'repayment')
+      .reduce((sum, t) => sum + (t.principal || 0), 0);
+
+    const activeFund = memberDeposits + totalInterest;
+    const remainingFund = (memberDeposits + totalInterest + totalRepayment) - totalLoan;
+    
+    return { totalActiveFund: activeFund, totalRemainingFund: remainingFund };
+  }, [transactions, members]);
+
 
   const handleEdit = (transaction: Transaction) => {
     setSelectedTransaction(transaction);
@@ -1030,11 +1057,6 @@ export default function TransactionsPage() {
     }
   };
 
-  const totalActiveFund = useMemo(() => {
-    if (!settings) return 0;
-    return (settings.totalDeposit || 0) + (settings.totalInterest || 0);
-  }, [settings]);
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -1076,7 +1098,7 @@ export default function TransactionsPage() {
           />
           <StatCard
             title="Total Remaining Fund"
-            value={loading ? '...' : `Rs. ${(settings?.totalFund || 0).toLocaleString('en-IN')}`}
+            value={loading ? '...' : `Rs. ${totalRemainingFund.toLocaleString('en-IN')}`}
             icon={Banknote}
             loading={loading}
           />
