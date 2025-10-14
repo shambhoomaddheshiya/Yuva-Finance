@@ -5,12 +5,13 @@ import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
-import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins, LibraryBig } from 'lucide-react';
+import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins, LibraryBig, UserCheck, UserX } from 'lucide-react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { collection, query, doc, Timestamp } from 'firebase/firestore';
+import { Badge } from '@/components/ui/badge';
 
 function StatCard({
   title,
@@ -57,6 +58,16 @@ export default function DashboardPage() {
   
   const loading = membersLoading || txLoading;
 
+  const { totalMembers, activeMembersCount, inactiveMembersCount } = useMemo(() => {
+    if (!members) {
+        return { totalMembers: 0, activeMembersCount: 0, inactiveMembersCount: 0 };
+    }
+    const total = members.length;
+    const active = members.filter(m => m.status === 'active').length;
+    const inactive = total - active;
+    return { totalMembers: total, activeMembersCount: active, inactiveMembersCount: inactive };
+  }, [members]);
+
   const { totalDeposits, totalLoan, totalRepayment, totalInterest, remainingFund } = useMemo(() => {
     if (!transactions || !members) {
       return { totalDeposits: 0, totalLoan: 0, totalRepayment: 0, totalInterest: 0, remainingFund: 0 };
@@ -81,13 +92,11 @@ export default function DashboardPage() {
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.interest || 0), 0);
 
-    // Total Deposits card should show all money contributed by members + interest earned
-    const totalDeposits = memberDeposits + totalInterest;
+    const totalDepositsValue = memberDeposits + totalInterest;
 
-    // Remaining fund is total cash in (member deposits + interest earned + principal repaid) minus total cash out (loans)
     const remainingFund = (memberDeposits + totalInterest + totalRepayment) - totalLoan;
     
-    return { totalDeposits, totalLoan, totalRepayment, totalInterest, remainingFund };
+    return { totalDeposits: totalDepositsValue, totalLoan, totalRepayment, totalInterest, remainingFund };
   }, [transactions, members]);
 
 
@@ -157,13 +166,31 @@ export default function DashboardPage() {
           loading={loading}
           description="From active members"
         />
-        <StatCard
-          title="Total Loan Disbursed"
-          value={loading ? '...' : `Rs. ${totalLoan.toLocaleString('en-IN')}`}
-          icon={Landmark}
-          loading={loading}
-          description="To active members"
-        />
+        <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Members</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+                {loading ? (
+                <Skeleton className="h-8 w-3/4" />
+                ) : (
+                <>
+                    <div className="text-2xl font-bold font-headline">{totalMembers}</div>
+                    <div className="flex items-center text-xs text-muted-foreground gap-x-2">
+                        <div className="flex items-center gap-1">
+                            <UserCheck className="h-3 w-3 text-green-500"/>
+                            <span>{activeMembersCount} Active</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                             <UserX className="h-3 w-3 text-red-500"/>
+                            <span>{inactiveMembersCount} Inactive</span>
+                        </div>
+                    </div>
+                 </>
+                )}
+            </CardContent>
+        </Card>
          <StatCard
           title="Total Interest Earned"
           value={loading ? '...' : `Rs. ${totalInterest.toLocaleString('en-IN')}`}
@@ -247,3 +274,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
