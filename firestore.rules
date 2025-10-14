@@ -1,102 +1,129 @@
 /**
- * @fileoverview Firestore Security Rules for Sahayak Savings application.
+ * @fileoverview Firestore Security Rules for Sahayak Savings App
  *
  * Core Philosophy:
- * This ruleset enforces a strict user-ownership model, where each user has exclusive access to their own data.
+ * This ruleset enforces a strict user-ownership model where each user can only
+ * access data under their own user ID. This ensures data privacy and prevents
+ * unauthorized access.
  *
  * Data Structure:
- * All data is nested under /users/{userId}, including member data, transactions, and group settings. This isolates user data.
+ * All data is nested under /users/{userId}, creating a clear separation between
+ * different users' data. Specifically:
+ * - /users/{userId}/members/{memberId}: Stores member data for each user.
+ * - /users/{userId}/transactions/{transactionId}: Stores transaction data for each user.
+ * - /users/{userId}/groupSettings: Stores group settings for each user.
  *
  * Key Security Decisions:
- * - User listing is implicitly disallowed by the data structure.
- * - All write operations are protected by ownership checks.
- * - Data for group settings is denormalized into member and transaction documents, allowing for authorization independence.
+ * - User listing is disallowed.
+ * - All write operations are restricted to the authenticated user.
+ * - Data consistency between the path and document data is enforced.
+ * - Denormalization is used to improve rule performance and avoid costly `get()` calls.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Checks if the request is made by the owner (authenticated user).
-     * @param {string} userId - The user ID to check against.
-     * @returns {boolean} - True if the user is the owner, false otherwise.
-     */
-    function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
-    }
-
-    /**
-     * @description Checks if the request is made by the existing owner (authenticated user) and the resource exists.
-     * @param {string} userId - The user ID to check against.
-     * @returns {boolean} - True if the user is the owner and resource exists, false otherwise.
-     */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && exists(resource);
-    }
-
-    /**
-     * @description Checks if the user is signed in.
-     * @returns {boolean} - True if the user is signed in, false otherwise.
+     * @description Secure access to user documents and subcollections. Only signed-in users can access their own data.
+     * @principle Strict user-ownership model; users can only manage their own data.
      */
     function isSignedIn() {
       return request.auth != null;
     }
 
     /**
-     * @description Rules for documents in the /users/{userId}/members/{memberId} collection.
+     * @description Checks if the request is made by the owner (user) of the document.
+     * @param {string} userId - The user ID to compare against the request's auth UID.
+     * @returns {boolean} True if the user ID matches the authenticated user's UID, false otherwise.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the request is made by the owner of the document, and that the document exists.
+     * @param {string} userId - The user ID to compare against the request's auth UID.
+     * @returns {boolean} True if the user ID matches the authenticated user's UID, and the resource exists.
+     */
+    function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+    }
+
+    match /users/{userId} {
+        allow get: if false;
+        allow list: if false;
+        allow create: if isOwner(userId);
+        allow update: if false;
+        allow delete: if false;
+    }
+
+    /**
+     * @description Manages member data for a specific user.
      * @path /users/{userId}/members/{memberId}
-     * @allow (create) User 'user123' can create a new member document with memberId also 'user123' under their own userId.
-     * @deny (create) User 'user456' cannot create a member document under the /users/{userId} document for 'user123'.
-     * @allow (get, list) User 'user123' can read member documents under their own userId.
-     * @deny (get, list) User 'user456' cannot read member documents under the /users/{userId} document for 'user123'.
-     * @allow (update, delete) User 'user123' can update or delete a member document under their own userId.
-     * @deny (update, delete) User 'user456' cannot update or delete member documents under the /users/{userId} document for 'user123'.
-     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     * @allow (create) - Authenticated user with matching userId creates a new member.
+     *          request.auth.uid == userId && request.resource.data.id == memberId
+     * @allow (update) - Authenticated user with matching userId updates a member.
+     *          isExistingOwner(userId) && request.resource.data.id == resource.data.id
+     * @allow (delete) - Authenticated user with matching userId deletes a member.
+     *          isExistingOwner(userId)
+     * @deny (create) - Mismatched userId or memberId in the request.
+     *          request.auth.uid != userId || request.resource.data.id != memberId
+     * @deny (update) - Attempt to change the memberId.
+     *          request.resource.data.id != resource.data.id
+     * @principle Enforces document ownership for writes; validates relational integrity between user and member.
      */
     match /users/{userId}/members/{memberId} {
       allow get: if isOwner(userId);
       allow list: if isOwner(userId);
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId);
-      allow delete: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.id == memberId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Rules for documents in the /users/{userId}/transactions/{transactionId} collection.
+     * @description Manages transaction data for a specific user.
      * @path /users/{userId}/transactions/{transactionId}
-     * @allow (create) User 'user123' can create a new transaction document with transactionId also 'user123' under their own userId.
-     * @deny (create) User 'user456' cannot create a transaction document under the /users/{userId} document for 'user123'.
-     * @allow (get, list) User 'user123' can read transaction documents under their own userId.
-     * @deny (get, list) User 'user456' cannot read transaction documents under the /users/{userId} document for 'user123'.
-     * @allow (update, delete) User 'user123' can update or delete a transaction document under their own userId.
-     * @deny (update, delete) User 'user456' cannot update or delete transaction documents under the /users/{userId} document for 'user123'.
-     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     * @allow (create) - Authenticated user with matching userId creates a new transaction.
+     *          request.auth.uid == userId
+     * @allow (update) - Authenticated user with matching userId updates a transaction.
+     *          isExistingOwner(userId)
+     * @allow (delete) - Authenticated user with matching userId deletes a transaction.
+     *          isExistingOwner(userId)
+     * @deny (create) - Mismatched userId in the request.
+     *          request.auth.uid != userId
+     * @deny (update) - Attempt to change the userId.
+     *          request.resource.data.userId != resource.data.userId
+     * @principle Enforces document ownership for writes; validates relational integrity between user and transaction.
      */
     match /users/{userId}/transactions/{transactionId} {
       allow get: if isOwner(userId);
       allow list: if isOwner(userId);
       allow create: if isOwner(userId);
-      allow update: if isOwner(userId);
-      allow delete: if isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Rules for the /users/{userId}/groupSettings document.
+     * @description Manages group settings for a specific user.
      * @path /users/{userId}/groupSettings
-     * @allow (create) User 'user123' can create their own group settings document.
-     * @deny (create) User 'user456' cannot create group settings document under the /users/{userId} document for 'user123'.
-     * @allow (get) User 'user123' can read their own group settings document.
-     * @deny (get) User 'user456' cannot read group settings document under the /users/{userId} document for 'user123'.
-     * @allow (update, delete) User 'user123' can update or delete their own group settings document.
-     * @deny (update, delete) User 'user456' cannot update or delete group settings document under the /users/{userId} document for 'user123'.
-     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     * @allow (create) - Authenticated user with matching userId creates group settings.
+     *          request.auth.uid == userId
+     * @allow (update) - Authenticated user with matching userId updates group settings.
+     *          isExistingOwner(userId)
+     * @allow (delete) - Authenticated user with matching userId deletes group settings.
+     *          isExistingOwner(userId)
+     * @deny (create) - Mismatched userId in the request.
+     *          request.auth.uid != userId
+     * @deny (update) - Attempt to change the userId.
+     *          request.resource.data.userId != resource.data.userId
+     * @principle Enforces document ownership for writes; validates relational integrity between user and group settings.
      */
     match /users/{userId}/groupSettings {
       allow get: if isOwner(userId);
       allow list: if false;
       allow create: if isOwner(userId);
-      allow update: if isOwner(userId);
-      allow delete: if isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
     }
   }
 }
