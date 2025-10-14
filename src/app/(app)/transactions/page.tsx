@@ -936,9 +936,9 @@ export default function TransactionsPage() {
     return totals;
   }, [filteredTransactions]);
 
-  const { totalActiveFund, totalRemainingFund } = useMemo(() => {
+  const { totalDeposits, totalRemainingFund } = useMemo(() => {
     if (!transactions || !members) {
-      return { totalActiveFund: 0, totalRemainingFund: 0 };
+      return { totalDeposits: 0, totalRemainingFund: 0 };
     }
     const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
     const activeTransactions = transactions.filter(t => activeMemberIds.has(t.memberId));
@@ -959,10 +959,10 @@ export default function TransactionsPage() {
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.principal || 0), 0);
 
-    const activeFund = memberDeposits + totalInterest;
+    const totalDepositsValue = memberDeposits + totalInterest;
     const remainingFund = (memberDeposits + totalInterest + totalRepayment) - totalLoan;
     
-    return { totalActiveFund: activeFund, totalRemainingFund: remainingFund };
+    return { totalDeposits: totalDepositsValue, totalRemainingFund: remainingFund };
   }, [transactions, members]);
 
 
@@ -1103,8 +1103,8 @@ export default function TransactionsPage() {
             loading={loading}
           />
           <StatCard
-            title="Total Active Fund"
-            value={loading ? '...' : `Rs. ${totalActiveFund.toLocaleString('en-IN')}`}
+            title="Total Deposits"
+            value={loading ? '...' : `Rs. ${totalDeposits.toLocaleString('en-IN')}`}
             icon={PiggyBank}
             loading={loading}
           />
