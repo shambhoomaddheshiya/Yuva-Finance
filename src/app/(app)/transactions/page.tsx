@@ -6,7 +6,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2, HandCoins, Banknote, PiggyBank, Landmark } from 'lucide-react';
-import { collection, doc, getDoc, query, writeBatch, where, getDocs, deleteDoc, Timestamp, updateDoc, increment } from 'firebase/firestore';
+import { collection, doc, getDoc, query, writeBatch, where, getDocs, deleteDoc, Timestamp, updateDoc, increment, setDoc } from 'firebase/firestore';
 import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -172,7 +172,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
     const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
     const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
 
-    const newTxData: Omit<Transaction, 'id' | 'balance'> = {
+    const newTxData: Omit<Transaction, 'id'> = {
         memberId: values.memberId,
         type: values.type,
         amount: values.amount,
@@ -186,20 +186,20 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                 currentBalance: increment(values.amount),
                 totalDeposited: increment(values.amount) 
             });
-            batch.update(settingsDocRef, {
+            batch.set(settingsDocRef, {
                 totalFund: increment(values.amount),
                 totalDeposit: increment(values.amount),
-            });
+            }, { merge: true });
             break;
         case 'loan':
             batch.update(memberDocRef, { 
                 loanBalance: increment(values.amount),
                 totalWithdrawn: increment(values.amount)
             });
-            batch.update(settingsDocRef, {
+            batch.set(settingsDocRef, {
                 totalFund: increment(-values.amount),
                 totalLoan: increment(values.amount),
-            });
+            }, { merge: true });
             break;
         case 'repayment':
             const principalRepaid = values.principal || 0;
@@ -211,11 +211,11 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
             batch.update(memberDocRef, { 
                 loanBalance: increment(-principalRepaid)
             });
-            batch.update(settingsDocRef, {
+            batch.set(settingsDocRef, {
                 totalFund: increment(principalRepaid + interestPaid),
                 totalRepayment: increment(principalRepaid),
                 totalInterest: increment(interestPaid),
-            });
+            }, { merge: true });
             break;
     }
 
@@ -1190,7 +1190,7 @@ export default function TransactionsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleEdit(tx)} disabled={tx.type === 'repayment'}>
+                          <DropdownMenuItem onClick={() => handleEdit(tx)} >
                             <Pencil className="mr-2 h-4 w-4" />
                             <span>Edit</span>
                           </DropdownMenuItem>
