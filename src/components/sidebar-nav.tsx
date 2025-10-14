@@ -10,6 +10,7 @@ import {
   HandCoins,
   FileText,
   LibraryBig,
+  Banknote,
 } from 'lucide-react';
 
 import {
@@ -28,6 +29,7 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/members', label: 'Members', icon: Users },
   { href: '/transactions', label: 'Transactions', icon: ArrowRightLeft },
+  { href: '/bulk-deposit', label: 'Bulk Deposit', icon: Banknote },
   { href: '/summary', label: 'Summary', icon: LibraryBig },
   { href: '/reports', label: 'Reports', icon: FileText },
   { href: '/settings', label: 'Settings', icon: Settings },
