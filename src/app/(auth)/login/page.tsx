@@ -74,14 +74,9 @@ export default function LoginPage() {
         groupName: 'My Savings Group',
         monthlyContribution: 1000,
         interestRate: 2,
-        totalMembers: 0,
-        totalFund: 0,
         establishedDate: new Date().toISOString(),
-        totalDeposit: 0,
-        totalLoan: 0,
-        totalRepayment: 0,
       };
-      await setDoc(settingsRef, defaultSettings);
+      await setDoc(settingsRef, defaultSettings, { merge: true });
     }
   };
 

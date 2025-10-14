@@ -6,7 +6,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2, HandCoins, Banknote, PiggyBank, Landmark } from 'lucide-react';
-import { collection, doc, getDoc, query, writeBatch, where, getDocs, deleteDoc, Timestamp, updateDoc, increment, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, query, writeBatch, where, getDocs, deleteDoc, Timestamp, updateDoc, increment, setDoc, addDoc } from 'firebase/firestore';
 import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -167,11 +167,6 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
     setIsLoading(true);
     
-    const batch = writeBatch(firestore);
-    const memberDocRef = doc(firestore, `users/${user.uid}/members`, values.memberId);
-    const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
-    const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
-
     const newTxData: Omit<Transaction, 'id'> = {
         memberId: values.memberId,
         type: values.type,
@@ -180,62 +175,27 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         description: values.description,
     };
     
-    switch (values.type) {
-        case 'deposit':
-            batch.update(memberDocRef, { 
-                currentBalance: increment(values.amount),
-                totalDeposited: increment(values.amount) 
-            });
-            batch.set(settingsDocRef, {
-                totalFund: increment(values.amount),
-                totalDeposit: increment(values.amount),
-            }, { merge: true });
-            break;
-        case 'loan':
-            batch.update(memberDocRef, { 
-                loanBalance: increment(values.amount),
-                totalWithdrawn: increment(values.amount)
-            });
-            batch.set(settingsDocRef, {
-                totalFund: increment(-values.amount),
-                totalLoan: increment(values.amount),
-            }, { merge: true });
-            break;
-        case 'repayment':
-            const principalRepaid = values.principal || 0;
-            const interestPaid = values.interest || 0;
-            
-            newTxData.principal = principalRepaid;
-            newTxData.interest = interestPaid;
-            
-            batch.update(memberDocRef, { 
-                loanBalance: increment(-principalRepaid)
-            });
-            batch.set(settingsDocRef, {
-                totalFund: increment(principalRepaid + interestPaid),
-                totalRepayment: increment(principalRepaid),
-                totalInterest: increment(interestPaid),
-            }, { merge: true });
-            break;
+    if (values.type === 'repayment') {
+        newTxData.principal = values.principal || 0;
+        newTxData.interest = values.interest || 0;
     }
-
-    batch.set(newTxRef, newTxData);
     
-    batch.commit().then(() => {
+    const transactionsCollectionRef = collection(firestore, `users/${user.uid}/transactions`);
+
+    addDoc(transactionsCollectionRef, newTxData).then(() => {
         toast({
             title: 'Success!',
             description: 'New transaction has been recorded.',
         });
         form.reset();
         onOpenChange(false);
-        setIsLoading(false);
     }).catch(error => {
-        const permissionError = new FirestorePermissionError({
-          path: newTxRef.path, // Use one of the paths from the batch
-          operation: 'write',
-          requestResourceData: { transaction: newTxData, memberUpdate: 'increment', settingsUpdate: 'increment'},
+        toast({
+            variant: 'destructive',
+            title: 'Uh oh! Something went wrong.',
+            description: error.message || 'There was a problem with your request.',
         });
-        errorEmitter.emit('permission-error', permissionError);
+    }).finally(() => {
         setIsLoading(false);
     });
 }
@@ -264,8 +224,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
               </Select>
                {selectedMember && (
                 <div className="text-sm text-muted-foreground mt-2 grid grid-cols-2">
-                    <p>Deposit Balance: <span className="font-medium">Rs. {selectedMember.currentBalance.toLocaleString('en-IN')}</span></p>
-                    <p>Loan Balance: <span className="font-medium">Rs. {(selectedMember.loanBalance || 0).toLocaleString('en-IN')}</span></p>
+                    {/* Balances are now calculated dynamically */}
                 </div>
               )}
               <FormMessage />
@@ -449,99 +408,20 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
     setIsLoading(true);
 
     try {
-        const batch = writeBatch(firestore);
         const txRef = doc(firestore, `users/${user.uid}/transactions`, transaction.id);
-        const memberRef = doc(firestore, `users/${user.uid}/members`, transaction.memberId);
-        const settingsRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
-
-        // It's crucial to get the most recent data before making changes
-        const [memberSnap, settingsSnap, oldTxSnap] = await Promise.all([
-          getDoc(memberRef),
-          getDoc(settingsRef),
-          getDoc(txRef)
-        ]);
-
-        if (!memberSnap.exists()) throw new Error("Member not found.");
-        if (!settingsSnap.exists()) throw new Error("Settings not found.");
-        if (!oldTxSnap.exists()) throw new Error("Original transaction not found.");
         
-        const memberData = memberSnap.data() as Member;
-        const settingsData = settingsSnap.data() as GroupSettings;
-        const oldTxData = oldTxSnap.data() as Transaction;
-        
-        // 1. Revert the old transaction
-        let newMemberBalance = memberData.currentBalance;
-        let newMemberLoanBalance = memberData.loanBalance || 0;
-        let newTotalDeposit = settingsData.totalDeposit || 0;
-        let newTotalLoan = settingsData.totalLoan || 0;
-        let newTotalRepayment = settingsData.totalRepayment || 0;
-        let newTotalInterest = settingsData.totalInterest || 0;
-
-        switch (oldTxData.type) {
-            case 'deposit':
-                newMemberBalance -= oldTxData.amount;
-                newTotalDeposit -= oldTxData.amount;
-                break;
-            case 'loan':
-                newMemberLoanBalance -= oldTxData.amount;
-                newTotalLoan -= oldTxData.amount;
-                break;
-            case 'repayment':
-                newMemberLoanBalance += (oldTxData.principal || 0);
-                newTotalRepayment -= (oldTxData.principal || 0);
-                newTotalInterest -= (oldTxData.interest || 0);
-                break;
-        }
-
-        // 2. Apply the new transaction values
         const updatedTxData: Partial<Transaction> = {
             date: Timestamp.fromDate(values.date),
             description: values.description,
             amount: values.amount,
         };
-        
-        switch (transaction.type) { // Use the original transaction type for logic
-            case 'deposit':
-                newMemberBalance += values.amount;
-                newTotalDeposit += values.amount;
-                break;
-            case 'loan':
-                newMemberLoanBalance += values.amount;
-                newTotalLoan += values.amount;
-                break;
-            case 'repayment':
-                const principalRepaid = values.principal || 0;
-                const interestPaid = values.interest || 0;
-                newMemberLoanBalance -= principalRepaid;
-                newTotalRepayment += principalRepaid;
-                newTotalInterest += interestPaid;
-                
-                updatedTxData.principal = principalRepaid;
-                updatedTxData.interest = interestPaid;
-                break;
+
+        if (transaction.type === 'repayment') {
+            updatedTxData.principal = values.principal || 0;
+            updatedTxData.interest = values.interest || 0;
         }
 
-        // 3. Set updates in batch
-        batch.update(memberRef, { 
-            currentBalance: newMemberBalance, 
-            loanBalance: newMemberLoanBalance,
-            // also update total deposited/withdrawn on member if necessary for other views
-            totalDeposited: (memberData.totalDeposited || 0) - (oldTxData.type === 'deposit' ? oldTxData.amount : 0) + (transaction.type === 'deposit' ? values.amount : 0),
-            totalWithdrawn: (memberData.totalWithdrawn || 0) - (oldTxData.type === 'loan' ? oldTxData.amount : 0) + (transaction.type === 'loan' ? values.amount : 0),
-        });
-        
-        const newRemainingFund = newTotalDeposit - (newTotalLoan - newTotalRepayment) + newTotalInterest;
-        batch.update(settingsRef, { 
-            totalDeposit: newTotalDeposit,
-            totalLoan: newTotalLoan,
-            totalRepayment: newTotalRepayment,
-            totalInterest: newTotalInterest,
-            totalFund: newRemainingFund,
-        });
-
-        batch.update(txRef, updatedTxData);
-
-        await batch.commit();
+        await updateDoc(txRef, updatedTxData);
 
         toast({
             title: 'Success!',
@@ -907,23 +787,9 @@ export default function TransactionsPage() {
     });
   }, [transactions, members, searchQuery, typeFilter, dateFilter, selectedYear, selectedMonth, customDateRange]);
   
-  const filteredTotals = useMemo(() => {
-    const totals = {
-        deposits: 0,
-        loans: 0,
-        repayments: 0,
-    }
-    for (const tx of filteredTransactions) {
-        if (tx.type === 'deposit') totals.deposits += tx.amount;
-        if (tx.type === 'loan') totals.loans += tx.amount;
-        if (tx.type === 'repayment') totals.repayments += tx.amount;
-    }
-    return totals;
-  }, [filteredTransactions]);
-
-  const { totalDeposits, totalRemainingFund } = useMemo(() => {
+  const summaryTotals = useMemo(() => {
     if (!transactions || !members) {
-      return { totalDeposits: 0, totalRemainingFund: 0 };
+      return { totalDeposits: 0, totalRemainingFund: 0, filteredDeposits: 0, filteredLoans: 0, filteredRepayments: 0 };
     }
     const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
     const activeTransactions = transactions.filter(t => activeMemberIds.has(t.memberId));
@@ -947,8 +813,25 @@ export default function TransactionsPage() {
     const totalDepositsValue = memberDeposits + totalInterest;
     const remainingFund = (memberDeposits + totalInterest + totalRepayment) - totalLoan;
     
-    return { totalDeposits: totalDepositsValue, totalRemainingFund: remainingFund };
-  }, [transactions, members]);
+    const filteredTotals = {
+        deposits: 0,
+        loans: 0,
+        repayments: 0,
+    }
+    for (const tx of filteredTransactions) {
+        if (tx.type === 'deposit') filteredTotals.deposits += tx.amount;
+        if (tx.type === 'loan') filteredTotals.loans += tx.amount;
+        if (tx.type === 'repayment') filteredTotals.repayments += tx.amount;
+    }
+
+    return { 
+        totalDeposits: totalDepositsValue, 
+        totalRemainingFund: remainingFund,
+        filteredDeposits: filteredTotals.deposits,
+        filteredLoans: filteredTotals.loans,
+        filteredRepayments: filteredTotals.repayments,
+    };
+  }, [transactions, members, filteredTransactions]);
 
 
   const handleEdit = (transaction: Transaction) => {
@@ -966,63 +849,8 @@ export default function TransactionsPage() {
     setIsDeleting(true);
 
     try {
-        const batch = writeBatch(firestore);
         const txRef = doc(firestore, `users/${user.uid}/transactions`, selectedTransaction.id);
-        const memberRef = doc(firestore, `users/${user.uid}/members`, selectedTransaction.memberId);
-        const settingsRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
-
-        const memberSnap = await getDoc(memberRef);
-        const settingsSnap = await getDoc(settingsRef);
-
-        if (!memberSnap.exists()) throw new Error("Member not found.");
-        if (!settingsSnap.exists()) throw new Error("Settings not found.");
-        
-        const memberData = memberSnap.data() as Member;
-        const settingsData = settingsSnap.data() as GroupSettings;
-
-        let { amount, type, principal, interest } = selectedTransaction;
-
-        // Revert member and group totals
-        let newMemberBalance = memberData.currentBalance;
-        let newMemberLoanBalance = memberData.loanBalance || 0;
-        let newTotalDeposit = settingsData.totalDeposit || 0;
-        let newTotalLoan = settingsData.totalLoan || 0;
-        let newTotalRepayment = settingsData.totalRepayment || 0;
-        let newTotalInterest = settingsData.totalInterest || 0;
-        
-        switch (type) {
-            case 'deposit':
-                newMemberBalance -= amount;
-                newTotalDeposit -= amount;
-                batch.update(memberRef, { currentBalance: newMemberBalance, totalDeposited: (memberData.totalDeposited || 0) - amount });
-                break;
-            case 'loan':
-                newMemberLoanBalance -= amount;
-                newTotalLoan -= amount;
-                batch.update(memberRef, { loanBalance: newMemberLoanBalance, totalWithdrawn: (memberData.totalWithdrawn || 0) - amount });
-                break;
-            case 'repayment':
-                newMemberLoanBalance += (principal || 0);
-                newTotalRepayment -= (principal || 0);
-                newTotalInterest -= (interest || 0);
-                batch.update(memberRef, { loanBalance: newMemberLoanBalance });
-                break;
-        }
-
-        // Delete the transaction
-        batch.delete(txRef);
-        
-        // Recalculate and update group's remaining fund
-        const newRemainingFund = newTotalDeposit - (newTotalLoan - newTotalRepayment) + newTotalInterest;
-        batch.update(settingsRef, { 
-            totalDeposit: newTotalDeposit,
-            totalLoan: newTotalLoan,
-            totalRepayment: newTotalRepayment,
-            totalInterest: newTotalInterest,
-            totalFund: newRemainingFund,
-        });
-
-        await batch.commit();
+        await deleteDoc(txRef);
         
         toast({
             title: 'Success!',
@@ -1068,28 +896,28 @@ export default function TransactionsPage() {
        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
          <StatCard
             title="Filtered Deposits"
-            value={loading ? '...' : `Rs. ${filteredTotals.deposits.toLocaleString('en-IN')}`}
+            value={loading ? '...' : `Rs. ${summaryTotals.filteredDeposits.toLocaleString('en-IN')}`}
             loading={loading}
           />
           <StatCard
             title="Filtered Repayments"
-            value={loading ? '...' : `Rs. ${filteredTotals.repayments.toLocaleString('en-IN')}`}
+            value={loading ? '...' : `Rs. ${summaryTotals.filteredRepayments.toLocaleString('en-IN')}`}
             loading={loading}
           />
            <StatCard
             title="Filtered Loans"
-            value={loading ? '...' : `Rs. ${filteredTotals.loans.toLocaleString('en-IN')}`}
+            value={loading ? '...' : `Rs. ${summaryTotals.filteredLoans.toLocaleString('en-IN')}`}
             loading={loading}
           />
           <StatCard
             title="Total Remaining Fund"
-            value={loading ? '...' : `Rs. ${totalRemainingFund.toLocaleString('en-IN')}`}
+            value={loading ? '...' : `Rs. ${summaryTotals.totalRemainingFund.toLocaleString('en-IN')}`}
             icon={Banknote}
             loading={loading}
           />
           <StatCard
             title="Total Deposits"
-            value={loading ? '...' : `Rs. ${totalDeposits.toLocaleString('en-IN')}`}
+            value={loading ? '...' : `Rs. ${summaryTotals.totalDeposits.toLocaleString('en-IN')}`}
             icon={PiggyBank}
             loading={loading}
           />
@@ -1221,7 +1049,7 @@ export default function TransactionsPage() {
           <DialogHeader>
             <DialogTitle className="font-headline">Edit Transaction</DialogTitle>
             <DialogDescription>
-              Update the transaction details below. Balances will be recalculated automatically.
+              Update the transaction details below.
             </DialogDescription>
           </DialogHeader>
           {selectedTransaction && <EditTransactionForm onOpenChange={setIsEditDialogOpen} transaction={selectedTransaction} />}
@@ -1233,7 +1061,7 @@ export default function TransactionsPage() {
             <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete the transaction and adjust member/group balances accordingly.
+                    This action cannot be undone. This will permanently delete the transaction. Balances will be recalculated automatically.
                 </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

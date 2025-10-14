@@ -266,9 +266,3 @@ export default function SummaryPage() {
     </div>
   );
 }
-
-
-
-
-
-

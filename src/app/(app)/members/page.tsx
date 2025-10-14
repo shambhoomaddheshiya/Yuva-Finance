@@ -107,14 +107,13 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
     if (!user || !firestore) return;
     setIsLoading(true);
     try {
-        const batch = writeBatch(firestore);
-        const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
         const aadhaarUnformatted = values.aadhaar.replace(/-/g, '');
         
         if (isEdit && member) {
             // Logic for editing a member
             if (member.id !== values.id) {
                 // ID has changed, complex update (migrate data)
+                const batch = writeBatch(firestore);
                 const newMemberDocRef = doc(firestore, `users/${user.uid}/members`, values.id);
                 const newMemberData: Member = {
                     ...member,
@@ -131,6 +130,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
                 const oldMemberDocRef = doc(firestore, `users/${user.uid}/members`, member.id);
                 batch.delete(oldMemberDocRef);
                 
+                await batch.commit();
                 toast({ title: 'Success!', description: 'Member ID changed and transactions updated.' });
 
             } else {
@@ -139,7 +139,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
                 const updatePayload: Partial<Member> = {
                     name: values.name, phone: values.phone, aadhaar: aadhaarUnformatted, joinDate: values.joinDate.toISOString()
                 };
-                batch.update(memberRef, updatePayload);
+                await updateDoc(memberRef, updatePayload);
                 toast({ title: 'Success!', description: 'Member has been updated.' });
             }
         } else {
@@ -148,29 +148,12 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
                 id: values.id, name: values.name, phone: values.phone, aadhaar: aadhaarUnformatted,
                 joinDate: values.joinDate.toISOString(),
                 status: 'active', // New members are active by default
-                totalDeposited: 0, totalWithdrawn: 0, currentBalance: 0, interestEarned: 0, loanBalance: 0,
             };
             const newMemberRef = doc(firestore, `users/${user.uid}/members`, values.id);
-            batch.set(newMemberRef, newMember);
-
-            // Also update totalMembers in groupSettings
-            const settingsSnap = await getDoc(settingsDocRef);
-            if (settingsSnap.exists()) {
-                const settingsData = settingsSnap.data() as GroupSettings;
-                batch.update(settingsDocRef, { totalMembers: (settingsData.totalMembers || 0) + 1 });
-            } else {
-                // If for some reason settings don't exist, create them
-                 const defaultSettings: GroupSettings = {
-                    groupName: 'My Savings Group', monthlyContribution: 1000, interestRate: 2,
-                    totalMembers: 1, totalFund: 0, establishedDate: new Date().toISOString(),
-                    totalDeposit: 0, totalLoan: 0, totalRepayment: 0,
-                };
-                batch.set(settingsDocRef, defaultSettings);
-            }
+            await setDoc(newMemberRef, newMember);
             toast({ title: 'Success!', description: 'New member has been added.' });
         }
       
-      await batch.commit();
       form.reset();
       onOpenChange(false);
 
@@ -296,14 +279,8 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
 }
 
 
-function PassbookView({ member }: { member: Member }) {
-    const { user } = useUser();
-    const firestore = useFirestore();
-    const transactionsRef = useMemoFirebase(
-      () => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`), where('memberId', '==', member.id)) : null,
-      [user, firestore, member.id]
-    );
-    const { data: transactions, isLoading } = useCollection<Transaction>(transactionsRef);
+function PassbookView({ member, transactions }: { member: Member, transactions: Transaction[] | null }) {
+    const isLoading = !transactions;
 
     const getTransactionDate = (tx: Transaction): Date => {
         if (!tx?.date) return new Date();
@@ -322,7 +299,8 @@ function PassbookView({ member }: { member: Member }) {
             return { sortedTransactions: [], depositBalance: 0, loanBalance: 0 };
         }
         
-        const sorted = [...transactions].sort((a, b) => getTransactionDate(b).getTime() - getTransactionDate(a).getTime());
+        const memberTransactions = transactions.filter(t => t.memberId === member.id);
+        const sorted = [...memberTransactions].sort((a, b) => getTransactionDate(b).getTime() - getTransactionDate(a).getTime());
         
         const depositTotal = sorted
             .filter(t => t.type === 'deposit')
@@ -343,7 +321,7 @@ function PassbookView({ member }: { member: Member }) {
             depositBalance: depositTotal, 
             loanBalance: calculatedLoanBalance 
         };
-    }, [transactions]);
+    }, [transactions, member.id]);
     
     const getTxTypeClass = (type: Transaction['type']) => {
         switch (type) {
@@ -436,8 +414,14 @@ export default function MembersPage() {
   const { user } = useUser();
   const { toast } = useToast();
   const firestore = useFirestore();
+  
   const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
-  const { data: memberList, isLoading: loading } = useCollection<Member>(membersRef);
+  const transactionsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
+  
+  const { data: memberList, isLoading: membersLoading } = useCollection<Member>(membersRef);
+  const { data: transactionList, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
+
+  const loading = membersLoading || txLoading;
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -447,6 +431,27 @@ export default function MembersPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const memberBalances = useMemo(() => {
+    const balances = new Map<string, { depositBalance: number, loanBalance: number }>();
+    if (!transactionList) return balances;
+
+    for(const tx of transactionList) {
+        if (!balances.has(tx.memberId)) {
+            balances.set(tx.memberId, { depositBalance: 0, loanBalance: 0 });
+        }
+        const current = balances.get(tx.memberId)!;
+        if(tx.type === 'deposit') {
+            current.depositBalance += tx.amount;
+        } else if (tx.type === 'loan') {
+            current.loanBalance += tx.amount;
+        } else if (tx.type === 'repayment') {
+            current.loanBalance -= (tx.principal || 0);
+        }
+    }
+    return balances;
+  }, [transactionList]);
+
 
   const filteredMembers = useMemo(() => {
     if (!memberList) return [];
@@ -473,7 +478,8 @@ export default function MembersPage() {
   }
 
   const handleDelete = (member: Member) => {
-    if ((member.loanBalance || 0) > 0) {
+    const balances = memberBalances.get(member.id);
+    if ((balances?.loanBalance || 0) > 0) {
         toast({
             variant: 'destructive',
             title: 'Deletion Not Allowed',
@@ -518,24 +524,7 @@ export default function MembersPage() {
         const memberId = selectedMember.id;
         const batch = writeBatch(firestore);
 
-        const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, 'settings');
         const memberDocRef = doc(firestore, `users/${user.uid}/members`, memberId);
-
-        const settingsSnap = await getDoc(settingsDocRef);
-        if (settingsSnap.exists()) {
-            const settingsData = settingsSnap.data() as GroupSettings;
-            const newTotalMembers = (settingsData.totalMembers || 0) > 0 ? settingsData.totalMembers - 1 : 0;
-            
-            // Adjust group totals
-            const newTotalDeposit = (settingsData.totalDeposit || 0) - selectedMember.currentBalance;
-            const newRemainingFund = newTotalDeposit - ((settingsData.totalLoan || 0) - (settingsData.totalRepayment || 0));
-
-            batch.update(settingsDocRef, { 
-                totalMembers: newTotalMembers,
-                totalDeposit: newTotalDeposit,
-                totalFund: newRemainingFund
-            });
-        }
         
         const transactionsQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('memberId', '==', memberId));
         const transactionsSnapshot = await getDocs(transactionsQuery);
@@ -651,8 +640,8 @@ export default function MembersPage() {
                     </TableCell>
                     <TableCell>{member.id}</TableCell>
                     <TableCell>{member.phone}</TableCell>
-                    <TableCell className="font-mono">Rs. {member.currentBalance.toLocaleString('en-IN')}</TableCell>
-                    <TableCell className="text-right font-mono">Rs. {(member.loanBalance || 0).toLocaleString('en-IN')}</TableCell>
+                    <TableCell className="font-mono">Rs. {(memberBalances.get(member.id)?.depositBalance || 0).toLocaleString('en-IN')}</TableCell>
+                    <TableCell className="text-right font-mono">Rs. {(memberBalances.get(member.id)?.loanBalance || 0).toLocaleString('en-IN')}</TableCell>
                      <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -724,7 +713,7 @@ export default function MembersPage() {
                     Transaction history for {selectedMember?.name}.
                 </DialogDescription>
             </DialogHeader>
-            {selectedMember && <PassbookView member={selectedMember} />}
+            {selectedMember && <PassbookView member={selectedMember} transactions={transactionList} />}
         </DialogContent>
       </Dialog>
 
@@ -749,7 +738,3 @@ export default function MembersPage() {
     </div>
   );
 }
-
-    
-
-    
