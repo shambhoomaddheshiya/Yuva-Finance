@@ -5,11 +5,12 @@ import { useState, useMemo, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2, HandCoins } from 'lucide-react';
+import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2, HandCoins, Banknote, PiggyBank, Landmark } from 'lucide-react';
 import { collection, doc, getDoc, query, writeBatch, where, getDocs, deleteDoc, Timestamp, updateDoc } from 'firebase/firestore';
 import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
+import { useDoc } from '@/firebase/firestore/use-doc';
 import { useToast } from '@/hooks/use-toast';
 import type { Member, Transaction, GroupSettings } from '@/types';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
@@ -769,16 +770,47 @@ function DateFilterControls({ dateFilter, selectedYear, setSelectedYear, selecte
     );
 }
 
+function StatCard({
+  title,
+  value,
+  icon: Icon,
+  loading,
+}: {
+  title: string;
+  value: string | number;
+  icon?: React.ElementType;
+  loading: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <Skeleton className="h-8 w-3/4" />
+        ) : (
+          <div className="text-2xl font-bold font-headline">{value}</div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 
 export default function TransactionsPage() {
   const { user } = useUser();
   const { toast } = useToast();
   const firestore = useFirestore();
+  
   const transactionsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
   const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
+  const settingsRef = useMemoFirebase(() => user && firestore ? doc(firestore, `users/${user.uid}/groupSettings/settings`) : null, [user, firestore]);
 
   const { data: transactions, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
+  const { data: settings, isLoading: settingsLoading } = useDoc<GroupSettings>(settingsRef);
   
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -793,7 +825,7 @@ export default function TransactionsPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>(String(new Date().getMonth()));
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
 
-  const loading = txLoading || membersLoading;
+  const loading = txLoading || membersLoading || settingsLoading;
   
   const getTransactionDate = (tx: Transaction) => {
     if (tx.date instanceof Timestamp) {
@@ -892,19 +924,19 @@ export default function TransactionsPage() {
     });
   }, [transactions, members, searchQuery, typeFilter, dateFilter, selectedYear, selectedMonth, customDateRange]);
   
-  const totalFilteredAmount = useMemo(() => {
-    return filteredTransactions.reduce((sum, tx) => sum + tx.amount, 0);
-  }, [filteredTransactions]);
-
-  const filterTitle = useMemo(() => {
-    let title = 'Filtered Total';
-    if(typeFilter !== 'all') {
-        title = `Filtered ${typeFilter.charAt(0).toUpperCase() + typeFilter.slice(1)}s Total`
+  const filteredTotals = useMemo(() => {
+    const totals = {
+        deposits: 0,
+        loans: 0,
+        repayments: 0,
     }
-    if (dateFilter === 'monthly') return `${title} (${format(new Date(parseInt(selectedYear), parseInt(selectedMonth)), 'MMM yyyy')})`;
-    if (dateFilter === 'yearly') return `${title} (${selectedYear})`;
-    return title;
-  }, [typeFilter, dateFilter, selectedYear, selectedMonth]);
+    for (const tx of filteredTransactions) {
+        if (tx.type === 'deposit') totals.deposits += tx.amount;
+        if (tx.type === 'loan') totals.loans += tx.amount;
+        if (tx.type === 'repayment') totals.repayments += tx.amount;
+    }
+    return totals;
+  }, [filteredTransactions]);
 
 
   const handleEdit = (transaction: Transaction) => {
@@ -1021,18 +1053,35 @@ export default function TransactionsPage() {
         </Dialog>
       </div>
       
-       {filteredTransactions.length > 0 && (
-        <Card>
-            <CardHeader className="p-4">
-                <CardTitle className="text-base font-medium">{filterTitle}</CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-                <div className="text-3xl font-bold font-headline text-primary">
-                    Rs. {totalFilteredAmount.toLocaleString('en-IN')}
-                </div>
-            </CardContent>
-        </Card>
-      )}
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+         <StatCard
+            title="Filtered Deposits"
+            value={loading ? '...' : `Rs. ${filteredTotals.deposits.toLocaleString('en-IN')}`}
+            loading={loading}
+          />
+          <StatCard
+            title="Filtered Repayments"
+            value={loading ? '...' : `Rs. ${filteredTotals.repayments.toLocaleString('en-IN')}`}
+            loading={loading}
+          />
+           <StatCard
+            title="Filtered Loans"
+            value={loading ? '...' : `Rs. ${filteredTotals.loans.toLocaleString('en-IN')}`}
+            loading={loading}
+          />
+          <StatCard
+            title="Total Remaining Fund"
+            value={loading ? '...' : `Rs. ${(settings?.totalFund || 0).toLocaleString('en-IN')}`}
+            icon={Banknote}
+            loading={loading}
+          />
+          <StatCard
+            title="Total Deposit Fund"
+            value={loading ? '...' : `Rs. ${(settings?.totalDeposit || 0).toLocaleString('en-IN')}`}
+            icon={PiggyBank}
+            loading={loading}
+          />
+       </div>
 
       <Card>
         <CardHeader>
