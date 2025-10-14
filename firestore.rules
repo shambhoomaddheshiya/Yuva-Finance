@@ -1,104 +1,106 @@
 /**
- * @fileOverview Firestore Security Rules for Sahayak Savings application.
+ * @fileoverview Firestore Security Rules for Sahayak Savings App
  *
  * Core Philosophy:
- * This ruleset enforces a strict user-ownership model. Each user has a private data scope under `/users/{userId}` and can only access data within that scope.
+ * This ruleset enforces a strict user-ownership model where each user can only
+ * access data under their own user ID. This ensures data privacy and prevents
+ * unauthorized access to other users' information.
  *
  * Data Structure:
- * - `/users/{userId}/members/{memberId}`: Stores member data, accessible only by the owning user.
- * - `/users/{userId}/transactions/{transactionId}`: Stores transaction data, accessible only by the owning user.
- * - `/users/{userId}/groupSettings`: Stores group settings, accessible only by the owning user.
+ * All data is nested under /users/{userId}, which includes members, transactions,
+ * and group settings.
+ *  - /users/{userId}/members/{memberId}: Stores individual member data.
+ *  - /users/{userId}/transactions/{transactionId}: Stores transaction history for members.
+ *  - /users/{userId}/groupSettings: Stores the group settings for the user.
  *
  * Key Security Decisions:
- * - Users can only manage data within their own `userId` scope.
- * - Listing data across different users is strictly prohibited to satisfy QAPs (Rules are not Filters).
- * - Data consistency is enforced by matching user IDs in paths and document data.
- * - Denormalization: Group settings are duplicated into members and transaction documents to ensure authorization independence and enable atomic operations.
+ * - User data is strictly segregated based on the authenticated user's ID.
+ * - Listing of user documents is allowed only within the user's own scope.
+ * - Data validation is limited to checking document ownership and preventing
+ *   modification of key relational fields.
+ * - Denormalization is employed to avoid costly `get()` calls in security rules.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Checks if the requesting user is signed in.
-     * @returns {boolean} True if the user is signed in, false otherwise.
+     * @description Checks if the request is made by a signed-in user.
+     * @return {boolean} True if the user is signed in, false otherwise.
      */
     function isSignedIn() {
       return request.auth != null;
     }
 
     /**
-     * @description Checks if the requesting user is the owner of the resource based on the userId.
-     * @param {string} userId - The user ID to compare against the request's auth UID.
-     * @returns {boolean} True if the user is the owner, false otherwise.
+     * @description Checks if the authenticated user ID matches the provided user ID.
+     * @param {string} userId The user ID to compare against the authenticated user's ID.
+     * @return {boolean} True if the user IDs match, false otherwise.
      */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
     /**
-     * @description Checks if the requesting user is the owner of the resource and that the document exists.
-     * @param {string} userId - The user ID to compare against the request's auth UID.
-     * @returns {boolean} True if the user is the owner and the resource exists, false otherwise.
+     * @description Checks if the authenticated user is the owner and the document exists.
+     * @param {string} userId The user ID to compare against the authenticated user's ID.
+     * @return {boolean} True if the user is the owner and the document exists, false otherwise.
      */
     function isExistingOwner(userId) {
       return isOwner(userId) && resource != null;
     }
-
+    
     /**
-     * @description Rules for the /users/{userId}/members/{memberId} collection.
+     * @description Rules for managing member data for a specific user.
      * @path /users/{userId}/members/{memberId}
-     * @allow (create) - Authenticated user 'user123' can create a member with memberId 'member456' under their userId 'user123' if the member document's userId also matches 'user123'.
-     * @allow (update) - Authenticated user 'user123' can update a member with memberId 'member456' under their userId 'user123' if they are the owner of the member document.
-     * @allow (delete) - Authenticated user 'user123' can delete a member with memberId 'member456' under their userId 'user123' if they are the owner of the member document.
-     * @deny (create) - Authenticated user 'user123' cannot create a member under userId 'user456'.
-     * @deny (update) - Authenticated user 'user123' cannot update a member under userId 'user456'.
-     * @deny (delete) - Authenticated user 'user123' cannot delete a member under userId 'user456'.
-     * @principle Enforces document ownership for writes, restricts access to a user's own data tree, validates relational integrity between documents.
+     * @allow (create) Signed-in user with UID 'user123' can create a new member document under /users/user123/members/member456 if request.resource.data.id matches 'user123'.
+     * @allow (get, list) Signed-in user with UID 'user123' can read or list member documents under /users/user123/members/.
+     * @allow (update, delete) Signed-in user with UID 'user123' can update or delete a member document under /users/user123/members/member456 if they are the owner and the document exists.
+     * @deny (create) Signed-in user with UID 'user123' cannot create a new member document under /users/user456/members/member456.
+     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
      */
     match /users/{userId}/members/{memberId} {
       allow get: if isOwner(userId);
       allow list: if isOwner(userId);
-      allow create: if isOwner(userId) && request.resource.data.id == memberId;
+
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
       allow update: if isExistingOwner(userId) && resource.data.id == request.resource.data.id;
       allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Rules for the /users/{userId}/transactions/{transactionId} collection.
+     * @description Rules for managing transaction data for a specific user and member.
      * @path /users/{userId}/transactions/{transactionId}
-     * @allow (create) - Authenticated user 'user123' can create a transaction with transactionId 'tx456' under their userId 'user123' if the transaction document's memberId also matches 'user123'.
-     * @allow (update) - Authenticated user 'user123' can update a transaction with transactionId 'tx456' under their userId 'user123' if they are the owner of the transaction document.
-     * @allow (delete) - Authenticated user 'user123' can delete a transaction with transactionId 'tx456' under their userId 'user123' if they are the owner of the transaction document.
-     * @deny (create) - Authenticated user 'user123' cannot create a transaction under userId 'user456'.
-     * @deny (update) - Authenticated user 'user123' cannot update a transaction under userId 'user456'.
-     * @deny (delete) - Authenticated user 'user123' cannot delete a transaction under userId 'user456'.
-     * @principle Enforces document ownership for writes, restricts access to a user's own data tree, validates relational integrity between documents.
+     * @allow (create) Signed-in user with UID 'user123' can create a new transaction document under /users/user123/transactions/transaction456.
+     * @allow (get, list) Signed-in user with UID 'user123' can read or list transaction documents under /users/user123/transactions/.
+     * @allow (update, delete) Signed-in user with UID 'user123' can update or delete a transaction document under /users/user123/transactions/transaction456 if they are the owner and the document exists.
+     * @deny (create) Signed-in user with UID 'user123' cannot create a new transaction document under /users/user456/transactions/transaction456.
+     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
      */
     match /users/{userId}/transactions/{transactionId} {
       allow get: if isOwner(userId);
       allow list: if isOwner(userId);
-      allow create: if isOwner(userId) && request.resource.data.id == transactionId;
+
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
       allow update: if isExistingOwner(userId) && resource.data.id == request.resource.data.id;
       allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Rules for the /users/{userId}/groupSettings document.
+     * @description Rules for managing group settings for a specific user.
      * @path /users/{userId}/groupSettings
-     * @allow (create) - Authenticated user 'user123' can create group settings under their userId 'user123'.
-     * @allow (update) - Authenticated user 'user123' can update group settings under their userId 'user123' if they are the owner of the group settings document.
-     * @allow (delete) - Authenticated user 'user123' can delete group settings under their userId 'user123' if they are the owner of the group settings document.
-     * @deny (create) - Authenticated user 'user123' cannot create group settings under userId 'user456'.
-     * @deny (update) - Authenticated user 'user123' cannot update group settings under userId 'user456'.
-     * @deny (delete) - Authenticated user 'user123' cannot delete group settings under userId 'user456'.
-     * @principle Enforces document ownership for writes, restricts access to a user's own data tree.
+     * @allow (create) Signed-in user with UID 'user123' can create group settings under /users/user123/groupSettings if request.resource.data.id matches 'user123'.
+     * @allow (get, list) Signed-in user with UID 'user123' can read or list group settings under /users/user123/groupSettings.
+     * @allow (update, delete) Signed-in user with UID 'user123' can update or delete group settings under /users/user123/groupSettings if they are the owner and the document exists.
+     * @deny (create) Signed-in user with UID 'user123' cannot create group settings under /users/user456/groupSettings.
+     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
      */
     match /users/{userId}/groupSettings {
       allow get: if isOwner(userId);
-      allow list: if false;
-      allow create: if isOwner(userId);
-      allow update: if isExistingOwner(userId);
+      allow list: if isOwner(userId);
+
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && resource.data.id == request.resource.data.id;
       allow delete: if isExistingOwner(userId);
     }
   }
