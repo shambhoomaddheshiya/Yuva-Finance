@@ -1030,6 +1030,11 @@ export default function TransactionsPage() {
     }
   };
 
+  const totalActiveFund = useMemo(() => {
+    if (!settings) return 0;
+    return (settings.totalDeposit || 0) + (settings.totalInterest || 0);
+  }, [settings]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -1076,8 +1081,8 @@ export default function TransactionsPage() {
             loading={loading}
           />
           <StatCard
-            title="Total Deposit Fund"
-            value={loading ? '...' : `Rs. ${(settings?.totalDeposit || 0).toLocaleString('en-IN')}`}
+            title="Total Active Fund"
+            value={loading ? '...' : `Rs. ${totalActiveFund.toLocaleString('en-IN')}`}
             icon={PiggyBank}
             loading={loading}
           />
