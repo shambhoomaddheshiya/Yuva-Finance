@@ -384,8 +384,8 @@ function PassbookView({ member }: { member: Member }) {
                 <p><span className="font-semibold">ID:</span> {member.id}</p>
                 <p><span className="font-semibold">Mob No:</span> {member.phone}</p>
                 <p><span className="font-semibold">Joined:</span> {new Date(member.joinDate).toLocaleDateString()}</p>
-                 <p className="col-span-2 font-medium"><span className="font-semibold">Deposit Balance:</span> Rs {depositBalance.toLocaleString('en-IN')}</p>
-                <p className="col-span-2 font-medium"><span className="font-semibold">Loan Balance:</span> Rs {loanBalance.toLocaleString('en-IN')}</p>
+                 <p className="col-span-2 font-medium"><span className="font-semibold">Deposit Balance:</span> Rs. {depositBalance.toLocaleString('en-IN')}</p>
+                <p className="col-span-2 font-medium"><span className="font-semibold">Loan Balance:</span> Rs. {loanBalance.toLocaleString('en-IN')}</p>
             </div>
             <Card>
                 <CardHeader>
@@ -416,7 +416,7 @@ function PassbookView({ member }: { member: Member }) {
                                             </div>
                                         </TableCell>
                                         <TableCell className={`text-right font-medium ${getTxAmountClass(tx.type)}`}>
-                                            {getTxAmountPrefix(tx.type)}Rs {tx.amount.toLocaleString('en-IN')}
+                                            {getTxAmountPrefix(tx.type)}Rs. {tx.amount.toLocaleString('en-IN')}
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -651,12 +651,12 @@ export default function MembersPage() {
                     </TableCell>
                     <TableCell>{member.id}</TableCell>
                     <TableCell>{member.phone}</TableCell>
-                    <TableCell className="font-mono">Rs {member.currentBalance.toLocaleString('en-IN')}</TableCell>
-                    <TableCell className="text-right font-mono">Rs {(member.loanBalance || 0).toLocaleString('en-IN')}</TableCell>
+                    <TableCell className="font-mono">Rs. {member.currentBalance.toLocaleString('en-IN')}</TableCell>
+                    <TableCell className="text-right font-mono">Rs. {(member.loanBalance || 0).toLocaleString('en-IN')}</TableCell>
                      <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0" disabled={isUpdatingStatus}>
+                          <Button variant="ghost" className="h-8 w-8 p-0" disabled={isUpdatingStatus && selectedMember?.id === member.id}>
                             {isUpdatingStatus && selectedMember?.id === member.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
                             <span className="sr-only">Open menu</span>
                           </Button>

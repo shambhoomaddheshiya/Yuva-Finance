@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -60,7 +61,7 @@ function SummaryDetailCard({
                         {members.map((member, index) => (
                           <li key={index} className="flex justify-between">
                             <span>{member.name}</span>
-                            <span className="font-medium text-foreground">Rs {member.amount.toLocaleString('en-IN')}</span>
+                            <span className="font-medium text-foreground">Rs. {member.amount.toLocaleString('en-IN')}</span>
                           </li>
                         ))}
                       </ul>
@@ -70,7 +71,7 @@ function SummaryDetailCard({
               )}
             </div>
             <div className="text-2xl font-bold font-headline text-right">
-              Rs {totalAmount.toLocaleString('en-IN')}
+              Rs. {totalAmount.toLocaleString('en-IN')}
             </div>
           </div>
         )}
@@ -265,6 +266,7 @@ export default function SummaryPage() {
     </div>
   );
 }
+
 
 
 

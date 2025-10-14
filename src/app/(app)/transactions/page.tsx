@@ -276,8 +276,8 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
               </Select>
                {selectedMember && (
                 <div className="text-sm text-muted-foreground mt-2 grid grid-cols-2">
-                    <p>Deposit Balance: <span className="font-medium">Rs {selectedMember.currentBalance.toLocaleString('en-IN')}</span></p>
-                    <p>Loan Balance: <span className="font-medium">Rs {(selectedMember.loanBalance || 0).toLocaleString('en-IN')}</span></p>
+                    <p>Deposit Balance: <span className="font-medium">Rs. {selectedMember.currentBalance.toLocaleString('en-IN')}</span></p>
+                    <p>Loan Balance: <span className="font-medium">Rs. {(selectedMember.loanBalance || 0).toLocaleString('en-IN')}</span></p>
                 </div>
               )}
               <FormMessage />
@@ -1028,7 +1028,7 @@ export default function TransactionsPage() {
             </CardHeader>
             <CardContent className="p-4 pt-0">
                 <div className="text-3xl font-bold font-headline text-primary">
-                    Rs {totalFilteredAmount.toLocaleString('en-IN')}
+                    Rs. {totalFilteredAmount.toLocaleString('en-IN')}
                 </div>
             </CardContent>
         </Card>
@@ -1118,7 +1118,7 @@ export default function TransactionsPage() {
                     <TableCell>{getTransactionDate(tx).toLocaleDateString()}</TableCell>
                     <TableCell>{tx.description}</TableCell>
                     <TableCell className={`text-right font-mono font-semibold ${getTxAmountClass(tx.type)}`}>
-                      {getTxAmountPrefix(tx.type)}Rs {tx.amount.toLocaleString('en-IN')}
+                      {getTxAmountPrefix(tx.type)}Rs. {tx.amount.toLocaleString('en-IN')}
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
