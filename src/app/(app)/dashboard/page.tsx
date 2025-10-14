@@ -151,7 +151,7 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-3xl font-bold font-headline">Dashboard</h1>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <StatCard
           title="Total Remaining Fund"
           value={loading ? '...' : `Rs. ${remainingFund.toLocaleString('en-IN')}`}
@@ -165,6 +165,13 @@ export default function DashboardPage() {
           icon={PiggyBank}
           loading={loading}
           description="From active members"
+        />
+        <StatCard
+          title="Total Loan Disbursed"
+          value={loading ? '...' : `Rs. ${totalLoan.toLocaleString('en-IN')}`}
+          icon={Landmark}
+          loading={loading}
+          description="To active members"
         />
         <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -274,5 +281,7 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
 
     
