@@ -131,7 +131,7 @@ export default function DashboardPage() {
 
   const monthlyOverview = useMemo(() => {
     const initialResult = {
-      monthlyReceived: 0,
+      monthlyDeposits: 0,
       monthlyLoan: 0,
       monthlyInterest: 0,
       monthlyPrincipal: 0,
@@ -154,18 +154,15 @@ export default function DashboardPage() {
         return txDate >= monthStart && txDate <= monthEnd && activeMemberIds.has(tx.memberId);
     });
     
-    const monthlyDeposit = monthlyTransactions.filter(t => t.type === 'deposit').reduce((sum, t) => sum + t.amount, 0);
+    const monthlyDeposits = monthlyTransactions.filter(t => t.type === 'deposit').reduce((sum, t) => sum + t.amount, 0);
     const monthlyLoan = monthlyTransactions.filter(t => t.type === 'loan').reduce((sum, t) => sum + t.amount, 0);
     const monthlyRepayments = monthlyTransactions.filter(t => t.type === 'repayment');
     
     const monthlyInterest = monthlyRepayments.reduce((sum, t) => sum + (t.interest || 0), 0);
     const monthlyPrincipal = monthlyRepayments.reduce((sum, t) => sum + (t.principal || 0), 0);
-    const monthlyTotalRepaymentAmount = monthlyRepayments.reduce((sum, t) => sum + t.amount, 0);
     
-    const monthlyReceived = monthlyDeposit + monthlyTotalRepaymentAmount;
-
     return { 
-        monthlyReceived, 
+        monthlyDeposits, 
         monthlyLoan, 
         monthlyInterest, 
         monthlyPrincipal,
@@ -180,7 +177,7 @@ export default function DashboardPage() {
     { name: 'Loans', total: totalLoan, fill: 'hsl(var(--destructive))' },
   ];
   
-  const hasMonthlyData = monthlyOverview.monthlyReceived > 0 || monthlyOverview.monthlyLoan > 0 || monthlyOverview.monthlyInterest > 0 || monthlyOverview.monthlyPrincipal > 0;
+  const hasMonthlyData = monthlyOverview.monthlyDeposits > 0 || monthlyOverview.monthlyLoan > 0 || monthlyOverview.monthlyInterest > 0 || monthlyOverview.monthlyPrincipal > 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -315,34 +312,11 @@ export default function DashboardPage() {
                     <Skeleton className="h-5 w-full" />
                     <Skeleton className="h-5 w-full" />
                 </div>
-            ) : hasMonthlyData ? (
-                <>
-                    <MonthlyOverviewStat 
-                        title="Total Amount Received" 
-                        value={`Rs. ${monthlyOverview.monthlyReceived.toLocaleString('en-IN')}`}
-                        loading={loading}
-                    />
-                    <MonthlyOverviewStat 
-                        title="Amount Given as Loan" 
-                        value={`Rs. ${monthlyOverview.monthlyLoan.toLocaleString('en-IN')}`}
-                        loading={loading}
-                    />
-                    <MonthlyOverviewStat 
-                        title="Interest Received" 
-                        value={`Rs. ${monthlyOverview.monthlyInterest.toLocaleString('en-IN')}`}
-                        loading={loading}
-                    />
-                    <MonthlyOverviewStat 
-                        title="Principal Recovered" 
-                        value={`Rs. ${monthlyOverview.monthlyPrincipal.toLocaleString('en-IN')}`}
-                        loading={loading}
-                    />
-                </>
             ) : (
-                 <div className="space-y-2">
+                <div className="space-y-2">
                     <MonthlyOverviewStat 
-                        title="Total Amount Received" 
-                        value={`Rs. ${monthlyOverview.monthlyReceived.toLocaleString('en-IN')}`}
+                        title="Total Amount Deposits" 
+                        value={`Rs. ${monthlyOverview.monthlyDeposits.toLocaleString('en-IN')}`}
                         loading={loading}
                     />
                     <MonthlyOverviewStat 
