@@ -5,13 +5,15 @@ import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
-import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins, LibraryBig, UserCheck, UserX, Scale } from 'lucide-react';
+import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins, LibraryBig, UserCheck, UserX, Scale, CalendarClock } from 'lucide-react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { collection, query, doc, Timestamp } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
+import { startOfMonth, endOfMonth } from 'date-fns';
+
 
 function StatCard({
   title,
@@ -46,6 +48,15 @@ function StatCard({
   );
 }
 
+function MonthlyOverviewStat({ title, value, loading }: { title: string; value: string; loading: boolean }) {
+    return (
+        <div className="flex justify-between items-center text-sm">
+            <p className="text-muted-foreground">{title}</p>
+            {loading ? <Skeleton className="h-5 w-24" /> : <p className="font-semibold font-mono">{value}</p>}
+        </div>
+    )
+}
+
 export default function DashboardPage() {
   const { user } = useUser();
   const firestore = useFirestore();
@@ -57,6 +68,18 @@ export default function DashboardPage() {
   const { data: transactions, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
   
   const loading = membersLoading || txLoading;
+  
+  const getTransactionDate = (tx: Transaction): Date => {
+    if (tx.date instanceof Timestamp) {
+      return tx.date.toDate();
+    }
+    if (tx.date instanceof Date) {
+      return tx.date;
+    }
+    // Fallback for string dates
+    return new Date(tx.date as string);
+  };
+
 
   const { totalMembers, activeMembersCount, inactiveMembersCount } = useMemo(() => {
     if (!members) {
@@ -106,55 +129,41 @@ export default function DashboardPage() {
     };
   }, [transactions, members]);
 
+  const monthlyOverview = useMemo(() => {
+    if (!transactions || !members) {
+        return { monthlyReceived: 0, monthlyLoan: 0, monthlyInterest: 0, monthlyPrincipal: 0 };
+    }
+
+    const now = new Date();
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+
+    const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
+    const monthlyTransactions = transactions.filter(tx => {
+        const txDate = getTransactionDate(tx);
+        return txDate >= monthStart && txDate <= monthEnd && activeMemberIds.has(tx.memberId);
+    });
+    
+    const monthlyDeposit = monthlyTransactions.filter(t => t.type === 'deposit').reduce((sum, t) => sum + t.amount, 0);
+    const monthlyLoan = monthlyTransactions.filter(t => t.type === 'loan').reduce((sum, t) => sum + t.amount, 0);
+    const monthlyRepayments = monthlyTransactions.filter(t => t.type === 'repayment');
+    
+    const monthlyInterest = monthlyRepayments.reduce((sum, t) => sum + (t.interest || 0), 0);
+    const monthlyPrincipal = monthlyRepayments.reduce((sum, t) => sum + (t.principal || 0), 0);
+    const monthlyTotalRepaymentAmount = monthlyRepayments.reduce((sum, t) => sum + t.amount, 0);
+    
+    const monthlyReceived = monthlyDeposit + monthlyTotalRepaymentAmount;
+
+    return { monthlyReceived, monthlyLoan, monthlyInterest, monthlyPrincipal };
+
+  }, [transactions, members]);
+
 
   const chartData = [
     { name: 'Deposits', total: totalDeposits, fill: 'hsl(var(--primary))' },
     { name: 'Loans', total: totalLoan, fill: 'hsl(var(--destructive))' },
   ];
   
-  const getTransactionDate = (tx: Transaction): Date => {
-    if (tx.date instanceof Timestamp) {
-      return tx.date.toDate();
-    }
-    if (tx.date instanceof Date) {
-      return tx.date;
-    }
-    // Fallback for string dates
-    return new Date(tx.date as string);
-  };
-
-  const getTxIcon = (type: Transaction['type']) => {
-    switch (type) {
-      case 'deposit':
-        return <div className="p-2 bg-green-100 rounded-full mr-4"><ArrowUp className="h-4 w-4 text-green-600"/></div>;
-      case 'loan':
-        return <div className="p-2 bg-red-100 rounded-full mr-4"><ArrowDown className="h-4 w-4 text-red-600"/></div>;
-      case 'repayment':
-        return <div className="p-2 bg-blue-100 rounded-full mr-4"><HandCoins className="h-4 w-4 text-blue-600"/></div>;
-      default:
-        return null;
-    }
-  }
-
-  const getTxAmountClass = (type: Transaction['type']) => {
-    switch (type) {
-        case 'deposit': return 'text-green-600';
-        case 'loan': return 'text-red-600';
-        case 'repayment': return 'text-blue-600';
-        default: return '';
-    }
-  }
-  
-  const getTxAmountPrefix = (type: Transaction['type']) => {
-    switch (type) {
-        case 'deposit': return '+';
-        case 'repayment': return '+';
-        case 'loan': return '-';
-        default: return '';
-    }
-  }
-
-
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-3xl font-bold font-headline">Dashboard</h1>
@@ -273,46 +282,40 @@ export default function DashboardPage() {
         </Card>
         <Card className="col-span-4 lg:col-span-3">
           <CardHeader>
-            <CardTitle className="font-headline">Recent Transactions</CardTitle>
-            <p className="text-sm text-muted-foreground">The last 5 transactions in the group.</p>
+            <div className="flex items-center justify-between">
+                <CardTitle className="font-headline">Monthly Financial Overview</CardTitle>
+                <CalendarClock className="h-5 w-5 text-muted-foreground"/>
+            </div>
+            <p className="text-sm text-muted-foreground">Summary of financial activity for the current month.</p>
           </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-4">
-                {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {transactions && members && transactions.length > 0 ? (
-                  transactions
-                    .sort((a, b) => {
-                      const dateA = getTransactionDate(a);
-                      const dateB = getTransactionDate(b);
-                      return dateB.getTime() - dateA.getTime();
-                    })
-                    .slice(0, 5)
-                    .map((tx) => (
-                      <div key={tx.id} className="flex items-center">
-                         {getTxIcon(tx.type)}
-                        <div className="flex-1 space-y-1">
-                          <p className="text-sm font-medium leading-none">{members.find(m => m.id === tx.memberId)?.name || 'Unknown Member'}</p>
-                          <p className="text-sm text-muted-foreground">{tx.description || tx.type.charAt(0).toUpperCase() + tx.type.slice(1)}</p>
-                        </div>
-                        <div className={`font-medium ${getTxAmountClass(tx.type)}`}>
-                          {getTxAmountPrefix(tx.type)}Rs. {tx.amount.toLocaleString('en-IN')}
-                        </div>
-                      </div>
-                    ))
-                ) : (
-                  <p>No transactions found.</p>
-                )}
-              </div>
-            )}
+          <CardContent className="space-y-4">
+            <MonthlyOverviewStat 
+                title="Total Amount Received" 
+                value={`Rs. ${monthlyOverview.monthlyReceived.toLocaleString('en-IN')}`}
+                loading={loading}
+            />
+            <MonthlyOverviewStat 
+                title="Amount Given as Loan" 
+                value={`Rs. ${monthlyOverview.monthlyLoan.toLocaleString('en-IN')}`}
+                loading={loading}
+            />
+             <MonthlyOverviewStat 
+                title="Interest Received" 
+                value={`Rs. ${monthlyOverview.monthlyInterest.toLocaleString('en-IN')}`}
+                loading={loading}
+            />
+             <MonthlyOverviewStat 
+                title="Principal Recovered" 
+                value={`Rs. ${monthlyOverview.monthlyPrincipal.toLocaleString('en-IN')}`}
+                loading={loading}
+            />
           </CardContent>
         </Card>
       </div>
     </div>
   );
 }
+
+    
 
     
