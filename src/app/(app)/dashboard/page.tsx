@@ -12,7 +12,7 @@ import { useCollection } from '@/firebase/firestore/use-collection';
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { collection, query, doc, Timestamp } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
-import { startOfMonth, endOfMonth } from 'date-fns';
+import { startOfMonth, endOfMonth, format } from 'date-fns';
 
 
 function StatCard({
@@ -130,13 +130,23 @@ export default function DashboardPage() {
   }, [transactions, members]);
 
   const monthlyOverview = useMemo(() => {
-    if (!transactions || !members) {
-        return { monthlyReceived: 0, monthlyLoan: 0, monthlyInterest: 0, monthlyPrincipal: 0 };
+    const initialResult = {
+      monthlyReceived: 0,
+      monthlyLoan: 0,
+      monthlyInterest: 0,
+      monthlyPrincipal: 0,
+      displayMonth: new Date(),
+    };
+
+    if (!transactions || transactions.length === 0 || !members) {
+      return initialResult;
     }
 
-    const now = new Date();
-    const monthStart = startOfMonth(now);
-    const monthEnd = endOfMonth(now);
+    const sortedTransactions = [...transactions].sort((a, b) => getTransactionDate(b).getTime() - getTransactionDate(a).getTime());
+    const latestTransactionDate = getTransactionDate(sortedTransactions[0]);
+    
+    const monthStart = startOfMonth(latestTransactionDate);
+    const monthEnd = endOfMonth(latestTransactionDate);
 
     const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
     const monthlyTransactions = transactions.filter(tx => {
@@ -154,7 +164,13 @@ export default function DashboardPage() {
     
     const monthlyReceived = monthlyDeposit + monthlyTotalRepaymentAmount;
 
-    return { monthlyReceived, monthlyLoan, monthlyInterest, monthlyPrincipal };
+    return { 
+        monthlyReceived, 
+        monthlyLoan, 
+        monthlyInterest, 
+        monthlyPrincipal,
+        displayMonth: latestTransactionDate
+    };
 
   }, [transactions, members]);
 
@@ -164,6 +180,8 @@ export default function DashboardPage() {
     { name: 'Loans', total: totalLoan, fill: 'hsl(var(--destructive))' },
   ];
   
+  const hasMonthlyData = monthlyOverview.monthlyReceived > 0 || monthlyOverview.monthlyLoan > 0 || monthlyOverview.monthlyInterest > 0 || monthlyOverview.monthlyPrincipal > 0;
+
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-3xl font-bold font-headline">Dashboard</h1>
@@ -283,39 +301,57 @@ export default function DashboardPage() {
         <Card className="col-span-4 lg:col-span-3">
           <CardHeader>
             <div className="flex items-center justify-between">
-                <CardTitle className="font-headline">Monthly Financial Overview</CardTitle>
+                <CardTitle className="font-headline">Monthly Overview</CardTitle>
                 <CalendarClock className="h-5 w-5 text-muted-foreground"/>
             </div>
-            <p className="text-sm text-muted-foreground">Summary of financial activity for the current month.</p>
+            <p className="text-sm text-muted-foreground">
+               {loading ? 'Loading...' : `Summary for ${format(monthlyOverview.displayMonth, 'MMMM yyyy')}`}
+            </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <MonthlyOverviewStat 
-                title="Total Amount Received" 
-                value={`Rs. ${monthlyOverview.monthlyReceived.toLocaleString('en-IN')}`}
-                loading={loading}
-            />
-            <MonthlyOverviewStat 
-                title="Amount Given as Loan" 
-                value={`Rs. ${monthlyOverview.monthlyLoan.toLocaleString('en-IN')}`}
-                loading={loading}
-            />
-             <MonthlyOverviewStat 
-                title="Interest Received" 
-                value={`Rs. ${monthlyOverview.monthlyInterest.toLocaleString('en-IN')}`}
-                loading={loading}
-            />
-             <MonthlyOverviewStat 
-                title="Principal Recovered" 
-                value={`Rs. ${monthlyOverview.monthlyPrincipal.toLocaleString('en-IN')}`}
-                loading={loading}
-            />
+            {loading ? (
+                <div className="space-y-4">
+                    <Skeleton className="h-5 w-full" />
+                    <Skeleton className="h-5 w-full" />
+                    <Skeleton className="h-5 w-full" />
+                </div>
+            ) : hasMonthlyData ? (
+                <>
+                    {monthlyOverview.monthlyReceived > 0 && (
+                        <MonthlyOverviewStat 
+                            title="Total Amount Received" 
+                            value={`Rs. ${monthlyOverview.monthlyReceived.toLocaleString('en-IN')}`}
+                            loading={loading}
+                        />
+                    )}
+                    {monthlyOverview.monthlyLoan > 0 && (
+                        <MonthlyOverviewStat 
+                            title="Amount Given as Loan" 
+                            value={`Rs. ${monthlyOverview.monthlyLoan.toLocaleString('en-IN')}`}
+                            loading={loading}
+                        />
+                    )}
+                    {monthlyOverview.monthlyInterest > 0 && (
+                        <MonthlyOverviewStat 
+                            title="Interest Received" 
+                            value={`Rs. ${monthlyOverview.monthlyInterest.toLocaleString('en-IN')}`}
+                            loading={loading}
+                        />
+                    )}
+                    {monthlyOverview.monthlyPrincipal > 0 && (
+                        <MonthlyOverviewStat 
+                            title="Principal Recovered" 
+                            value={`Rs. ${monthlyOverview.monthlyPrincipal.toLocaleString('en-IN')}`}
+                            loading={loading}
+                        />
+                    )}
+                </>
+            ) : (
+                <p className="text-sm text-muted-foreground text-center">No transactions found for this month.</p>
+            )}
           </CardContent>
         </Card>
       </div>
     </div>
   );
 }
-
-    
-
-    
