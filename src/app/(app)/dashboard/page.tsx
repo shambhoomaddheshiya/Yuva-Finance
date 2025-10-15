@@ -317,37 +317,50 @@ export default function DashboardPage() {
                 </div>
             ) : hasMonthlyData ? (
                 <>
-                    {monthlyOverview.monthlyReceived > 0 && (
-                        <MonthlyOverviewStat 
-                            title="Total Amount Received" 
-                            value={`Rs. ${monthlyOverview.monthlyReceived.toLocaleString('en-IN')}`}
-                            loading={loading}
-                        />
-                    )}
-                    {monthlyOverview.monthlyLoan > 0 && (
-                        <MonthlyOverviewStat 
-                            title="Amount Given as Loan" 
-                            value={`Rs. ${monthlyOverview.monthlyLoan.toLocaleString('en-IN')}`}
-                            loading={loading}
-                        />
-                    )}
-                    {monthlyOverview.monthlyInterest > 0 && (
-                        <MonthlyOverviewStat 
-                            title="Interest Received" 
-                            value={`Rs. ${monthlyOverview.monthlyInterest.toLocaleString('en-IN')}`}
-                            loading={loading}
-                        />
-                    )}
-                    {monthlyOverview.monthlyPrincipal > 0 && (
-                        <MonthlyOverviewStat 
-                            title="Principal Recovered" 
-                            value={`Rs. ${monthlyOverview.monthlyPrincipal.toLocaleString('en-IN')}`}
-                            loading={loading}
-                        />
-                    )}
+                    <MonthlyOverviewStat 
+                        title="Total Amount Received" 
+                        value={`Rs. ${monthlyOverview.monthlyReceived.toLocaleString('en-IN')}`}
+                        loading={loading}
+                    />
+                    <MonthlyOverviewStat 
+                        title="Amount Given as Loan" 
+                        value={`Rs. ${monthlyOverview.monthlyLoan.toLocaleString('en-IN')}`}
+                        loading={loading}
+                    />
+                    <MonthlyOverviewStat 
+                        title="Interest Received" 
+                        value={`Rs. ${monthlyOverview.monthlyInterest.toLocaleString('en-IN')}`}
+                        loading={loading}
+                    />
+                    <MonthlyOverviewStat 
+                        title="Principal Recovered" 
+                        value={`Rs. ${monthlyOverview.monthlyPrincipal.toLocaleString('en-IN')}`}
+                        loading={loading}
+                    />
                 </>
             ) : (
-                <p className="text-sm text-muted-foreground text-center">No transactions found for this month.</p>
+                 <div className="space-y-2">
+                    <MonthlyOverviewStat 
+                        title="Total Amount Received" 
+                        value={`Rs. ${monthlyOverview.monthlyReceived.toLocaleString('en-IN')}`}
+                        loading={loading}
+                    />
+                    <MonthlyOverviewStat 
+                        title="Amount Given as Loan" 
+                        value={`Rs. ${monthlyOverview.monthlyLoan.toLocaleString('en-IN')}`}
+                        loading={loading}
+                    />
+                    <MonthlyOverviewStat 
+                        title="Interest Received" 
+                        value={`Rs. ${monthlyOverview.monthlyInterest.toLocaleString('en-IN')}`}
+                        loading={loading}
+                    />
+                    <MonthlyOverviewStat 
+                        title="Principal Recovered" 
+                        value={`Rs. ${monthlyOverview.monthlyPrincipal.toLocaleString('en-IN')}`}
+                        loading={loading}
+                    />
+                </div>
             )}
           </CardContent>
         </Card>
