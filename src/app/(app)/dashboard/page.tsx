@@ -380,16 +380,16 @@ export default function DashboardPage() {
             <CardContent>
                 {loading ? (
                     <div className="space-y-4">
-                        {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+                        {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
                     </div>
                 ) : recentTransactions.length > 0 ? (
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Member</TableHead>
-                                <TableHead>Type</TableHead>
-                                <TableHead>Date</TableHead>
-                                <TableHead className="text-right">Amount</TableHead>
+                                <TableHead className="h-10">Member</TableHead>
+                                <TableHead className="h-10">Type</TableHead>
+                                <TableHead className="h-10">Date</TableHead>
+                                <TableHead className="text-right h-10">Amount</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -397,15 +397,15 @@ export default function DashboardPage() {
                                 const member = members?.find(m => m.id === tx.memberId);
                                 return (
                                 <TableRow key={tx.id}>
-                                    <TableCell>
-                                        <div className="flex items-center gap-3">
-                                            <Avatar className="h-9 w-9">
-                                                <AvatarFallback>{member ? getInitials(member.name) : '?'}</AvatarFallback>
+                                    <TableCell className="py-2">
+                                        <div className="flex items-center gap-2">
+                                            <Avatar className="h-8 w-8">
+                                                <AvatarFallback className="text-xs">{member ? getInitials(member.name) : '?'}</AvatarFallback>
                                             </Avatar>
-                                            <div className="font-medium">{member?.name || 'Unknown'}</div>
+                                            <div className="font-medium text-sm">{member?.name || 'Unknown'}</div>
                                         </div>
                                     </TableCell>
-                                    <TableCell>
+                                    <TableCell className="py-2">
                                         <div className={cn(
                                                 'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold',
                                                 getTxTypeClass(tx.type)
@@ -414,8 +414,8 @@ export default function DashboardPage() {
                                             {tx.type}
                                         </div>
                                     </TableCell>
-                                    <TableCell>{format(getTransactionDate(tx), 'PPP')}</TableCell>
-                                    <TableCell className="text-right font-mono">Rs. {tx.amount.toLocaleString('en-IN')}</TableCell>
+                                    <TableCell className="py-2 text-sm">{format(getTransactionDate(tx), 'PPP')}</TableCell>
+                                    <TableCell className="text-right font-mono py-2 text-sm">Rs. {tx.amount.toLocaleString('en-IN')}</TableCell>
                                 </TableRow>
                                 )
                             })}
@@ -429,5 +429,7 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
 
     
