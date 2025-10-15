@@ -5,7 +5,7 @@ import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
-import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins, LibraryBig, UserCheck, UserX } from 'lucide-react';
+import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins, LibraryBig, UserCheck, UserX, Scale } from 'lucide-react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -68,9 +68,9 @@ export default function DashboardPage() {
     return { totalMembers: total, activeMembersCount: active, inactiveMembersCount: inactive };
   }, [members]);
 
-  const { totalDeposits, totalLoan, totalRepayment, totalInterest, remainingFund } = useMemo(() => {
+  const { totalDeposits, totalLoan, totalRepayment, totalInterest, remainingFund, outstandingLoan } = useMemo(() => {
     if (!transactions || !members) {
-      return { totalDeposits: 0, totalLoan: 0, totalRepayment: 0, totalInterest: 0, remainingFund: 0 };
+      return { totalDeposits: 0, totalLoan: 0, totalRepayment: 0, totalInterest: 0, remainingFund: 0, outstandingLoan: 0 };
     }
     
     const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
@@ -80,23 +80,30 @@ export default function DashboardPage() {
       .filter(t => t.type === 'deposit')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalLoan = activeTransactions
+    const totalLoanValue = activeTransactions
       .filter(t => t.type === 'loan')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalRepayment = activeTransactions
+    const totalRepaymentValue = activeTransactions
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.principal || 0), 0);
     
-    const totalInterest = activeTransactions
+    const totalInterestValue = activeTransactions
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.interest || 0), 0);
 
-    const totalDepositsValue = memberDeposits + totalInterest;
-
-    const remainingFund = (memberDeposits + totalInterest + totalRepayment) - totalLoan;
+    const totalDepositsValue = memberDeposits + totalInterestValue;
+    const outstandingLoanValue = totalLoanValue - totalRepaymentValue;
+    const remainingFundValue = (memberDeposits + totalInterestValue + totalRepaymentValue) - totalLoanValue;
     
-    return { totalDeposits: totalDepositsValue, totalLoan, totalRepayment, totalInterest, remainingFund };
+    return { 
+      totalDeposits: totalDepositsValue, 
+      totalLoan: totalLoanValue, 
+      totalRepayment: totalRepaymentValue, 
+      totalInterest: totalInterestValue, 
+      remainingFund: remainingFundValue,
+      outstandingLoan: outstandingLoanValue
+    };
   }, [transactions, members]);
 
 
@@ -151,7 +158,7 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-3xl font-bold font-headline">Dashboard</h1>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Remaining Fund"
           value={loading ? '...' : `Rs. ${remainingFund.toLocaleString('en-IN')}`}
@@ -173,7 +180,14 @@ export default function DashboardPage() {
           loading={loading}
           description="To active members"
         />
-        <Card>
+         <StatCard
+          title="Total Interest Earned"
+          value={loading ? '...' : `Rs. ${totalInterest.toLocaleString('en-IN')}`}
+          icon={LibraryBig}
+          loading={loading}
+          description="From loan repayments"
+        />
+         <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Members</CardTitle>
                 <Users className="h-4 w-4 text-muted-foreground" />
@@ -182,29 +196,48 @@ export default function DashboardPage() {
                 {loading ? (
                 <Skeleton className="h-8 w-3/4" />
                 ) : (
-                <>
                     <div className="text-2xl font-bold font-headline">{totalMembers}</div>
-                    <div className="flex items-center text-xs text-muted-foreground gap-x-2">
-                        <div className="flex items-center gap-1">
-                            <UserCheck className="h-3 w-3 text-green-500"/>
-                            <span>{activeMembersCount} Active</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                             <UserX className="h-3 w-3 text-red-500"/>
-                            <span>{inactiveMembersCount} Inactive</span>
-                        </div>
-                    </div>
-                 </>
                 )}
+                 <p className="text-xs text-muted-foreground">Total members in group</p>
             </CardContent>
         </Card>
-         <StatCard
-          title="Total Interest Earned"
-          value={loading ? '...' : `Rs. ${totalInterest.toLocaleString('en-IN')}`}
-          icon={LibraryBig}
-          loading={loading}
-          description="From active members"
-        />
+        <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Member Status</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+                {loading ? (
+                <Skeleton className="h-8 w-3/4" />
+                ) : (
+                <div className="flex items-center text-lg font-bold font-headline gap-x-4">
+                    <div className="flex items-center gap-1">
+                        <UserCheck className="h-5 w-5 text-green-500"/>
+                        <span>{activeMembersCount}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                         <UserX className="h-5 w-5 text-red-500"/>
+                        <span>{inactiveMembersCount}</span>
+                    </div>
+                </div>
+                )}
+                 <p className="text-xs text-muted-foreground">Active vs. Inactive</p>
+            </CardContent>
+        </Card>
+        <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Loan Recovery</CardTitle>
+                <Scale className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+                {loading ? (
+                <Skeleton className="h-8 w-3/4" />
+                ) : (
+                <div className="text-2xl font-bold font-headline">Rs. {outstandingLoan.toLocaleString('en-IN')}</div>
+                )}
+                 <p className="text-xs text-muted-foreground">Outstanding loan balance</p>
+            </CardContent>
+        </Card>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         <Card className="col-span-4">
@@ -233,7 +266,7 @@ export default function DashboardPage() {
                   contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
                   formatter={(value: number) => [`Rs. ${value.toLocaleString('en-IN')}`, 'Total']}
                 />
-                <Bar dataKey="total" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="total" radius={[4, 4, 0, 0]} barSize={30} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -281,3 +314,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
