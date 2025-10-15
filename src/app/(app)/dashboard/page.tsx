@@ -302,7 +302,7 @@ export default function DashboardPage() {
             <CardTitle className="font-headline">Overview</CardTitle>
           </CardHeader>
           <CardContent className="pl-2">
-            <ResponsiveContainer width="100%" height={350}>
+            <ResponsiveContainer width="100%" height={200}>
               <BarChart data={chartData}>
                 <XAxis
                   dataKey="name"
@@ -323,30 +323,30 @@ export default function DashboardPage() {
                   contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
                   formatter={(value: number) => [`Rs. ${value.toLocaleString('en-IN')}`, 'Total']}
                 />
-                <Bar dataKey="total" radius={[4, 4, 0, 0]} barSize={30} />
+                <Bar dataKey="total" radius={[4, 4, 0, 0]} barSize={15} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
         <Card className="col-span-4 lg:col-span-3">
-          <CardHeader>
+          <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-                <CardTitle className="font-headline">Monthly Overview</CardTitle>
+                <CardTitle className="font-headline text-lg">Monthly Overview</CardTitle>
                 <CalendarClock className="h-5 w-5 text-muted-foreground"/>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground pt-1">
                {loading ? 'Loading...' : `Summary for ${format(monthlyOverview.displayMonth, 'MMMM yyyy')}`}
             </p>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-2">
             {loading ? (
-                <div className="space-y-4">
-                    <Skeleton className="h-5 w-full" />
-                    <Skeleton className="h-5 w-full" />
-                    <Skeleton className="h-5 w-full" />
+                <div className="space-y-2">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-full" />
                 </div>
             ) : (
-                <div className="space-y-2">
+                <div className="space-y-1">
                     <MonthlyOverviewStat 
                         title="Total Amount Deposits" 
                         value={`Rs. ${monthlyOverview.monthlyDeposits.toLocaleString('en-IN')}`}
