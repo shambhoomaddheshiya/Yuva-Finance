@@ -2,7 +2,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
 import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins, LibraryBig, UserCheck, UserX, Scale, CalendarClock } from 'lucide-react';
@@ -13,6 +13,9 @@ import { useDoc } from '@/firebase/firestore/use-doc';
 import { collection, query, doc, Timestamp } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { cn } from '@/lib/utils';
 
 
 function StatCard({
@@ -171,6 +174,13 @@ export default function DashboardPage() {
 
   }, [transactions, members]);
 
+    const recentTransactions = useMemo(() => {
+        if (!transactions) return [];
+        return [...transactions]
+            .sort((a, b) => getTransactionDate(b).getTime() - getTransactionDate(a).getTime())
+            .slice(0, 5);
+    }, [transactions]);
+
 
   const chartData = [
     { name: 'Deposits', total: totalDeposits, fill: 'hsl(var(--primary))' },
@@ -178,6 +188,29 @@ export default function DashboardPage() {
   ];
   
   const hasMonthlyData = monthlyOverview.monthlyDeposits > 0 || monthlyOverview.monthlyLoan > 0 || monthlyOverview.monthlyInterest > 0 || monthlyOverview.monthlyPrincipal > 0;
+
+  const getTxTypeClass = (type: Transaction['type']) => {
+    switch (type) {
+        case 'deposit': return 'border-transparent bg-green-100 text-green-800';
+        case 'loan': return 'border-transparent bg-red-100 text-red-800';
+        case 'repayment': return 'border-transparent bg-blue-100 text-blue-800';
+        default: return '';
+    }
+  }
+
+  const getTxTypeIcon = (type: Transaction['type']) => {
+    switch(type) {
+      case 'deposit': return <ArrowUp className="mr-1 h-3 w-3" />;
+      case 'loan': return <ArrowDown className="mr-1 h-3 w-3" />;
+      case 'repayment': return <HandCoins className="mr-1 h-3 w-3" />;
+    }
+  }
+
+  const getInitials = (name: string) => {
+    const names = name.split(' ');
+    const initials = names.map(n => n[0]).join('');
+    return initials.toUpperCase();
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -339,6 +372,62 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+       <Card>
+            <CardHeader>
+                <CardTitle className="font-headline">Recent Transactions</CardTitle>
+                <CardDescription>The last 5 transactions recorded in the group.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {loading ? (
+                    <div className="space-y-4">
+                        {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+                    </div>
+                ) : recentTransactions.length > 0 ? (
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Member</TableHead>
+                                <TableHead>Type</TableHead>
+                                <TableHead>Date</TableHead>
+                                <TableHead className="text-right">Amount</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {recentTransactions.map(tx => {
+                                const member = members?.find(m => m.id === tx.memberId);
+                                return (
+                                <TableRow key={tx.id}>
+                                    <TableCell>
+                                        <div className="flex items-center gap-3">
+                                            <Avatar className="h-9 w-9">
+                                                <AvatarFallback>{member ? getInitials(member.name) : '?'}</AvatarFallback>
+                                            </Avatar>
+                                            <div className="font-medium">{member?.name || 'Unknown'}</div>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>
+                                        <div className={cn(
+                                                'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold',
+                                                getTxTypeClass(tx.type)
+                                            )}>
+                                            {getTxTypeIcon(tx.type)}
+                                            {tx.type}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>{format(getTransactionDate(tx), 'PPP')}</TableCell>
+                                    <TableCell className="text-right font-mono">Rs. {tx.amount.toLocaleString('en-IN')}</TableCell>
+                                </TableRow>
+                                )
+                            })}
+                        </TableBody>
+                    </Table>
+                ) : (
+                    <p className="text-center text-muted-foreground py-8">No transactions found.</p>
+                )}
+            </CardContent>
+        </Card>
     </div>
   );
 }
+
+    
