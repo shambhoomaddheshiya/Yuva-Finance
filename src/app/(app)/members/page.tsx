@@ -378,6 +378,7 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mt-4">
                     <p><span className="font-semibold">ID:</span> {member.id}</p>
                     <p><span className="font-semibold">Mob No:</span> {member.phone}</p>
+                    <p><span className="font-semibold">Aadhaar:</span> {formatAadhaar(member.aadhaar)}</p>
                     <p><span className="font-semibold">Joined:</span> {new Date(member.joinDate).toLocaleDateString()}</p>
                     <p className="font-medium"><span className="font-semibold">Loan Balance:</span> Rs. {loanBalance.toLocaleString('en-IN')}</p>
                 </div>
@@ -763,5 +764,7 @@ export default function MembersPage() {
     </div>
   );
 }
+
+    
 
     
