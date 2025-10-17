@@ -5,7 +5,7 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX, HandCoins } from 'lucide-react';
+import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX, HandCoins, Percent } from 'lucide-react';
 import { format, getYear } from 'date-fns';
 import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
@@ -49,7 +49,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import {
   Form,
   FormControl,
@@ -67,6 +67,7 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 
 const memberSchema = z.object({
   id: z.string().min(1, 'Member ID cannot be empty.'),
@@ -280,7 +281,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
 }
 
 
-function PassbookView({ member, transactions }: { member: Member, transactions: Transaction[] | null }) {
+function PassbookView({ member, allMembers, transactions }: { member: Member, allMembers: Member[], transactions: Transaction[] | null }) {
     const isLoading = !transactions;
 
     const getTransactionDate = (tx: Transaction): Date => {
@@ -291,15 +292,20 @@ function PassbookView({ member, transactions }: { member: Member, transactions: 
         if (tx.date instanceof Date) {
             return tx.date;
         }
-        // Fallback for string dates
         return new Date(tx.date as string);
     };
   
-    const { sortedTransactions, depositBalance, loanBalance } = useMemo(() => {
-        if (!transactions) {
-            return { sortedTransactions: [], depositBalance: 0, loanBalance: 0 };
+    const { sortedTransactions, depositBalance, loanBalance, interestShare, grandTotal } = useMemo(() => {
+        if (!transactions || !allMembers) {
+            return { sortedTransactions: [], depositBalance: 0, loanBalance: 0, interestShare: 0, grandTotal: 0 };
         }
         
+        const activeMembersCount = allMembers.filter(m => m.status === 'active').length;
+
+        const totalInterest = transactions
+            .filter(t => t.type === 'repayment')
+            .reduce((sum, t) => sum + (t.interest || 0), 0);
+
         const memberTransactions = transactions.filter(t => t.memberId === member.id);
         const sorted = [...memberTransactions].sort((a, b) => getTransactionDate(b).getTime() - getTransactionDate(a).getTime());
         
@@ -316,13 +322,17 @@ function PassbookView({ member, transactions }: { member: Member, transactions: 
             .reduce((sum, t) => sum + (t.principal || 0), 0);
 
         const calculatedLoanBalance = loanTotal - repaymentTotal;
+        const calculatedInterestShare = activeMembersCount > 0 ? totalInterest / activeMembersCount : 0;
+        const calculatedGrandTotal = depositTotal + calculatedInterestShare;
 
         return { 
             sortedTransactions: sorted, 
             depositBalance: depositTotal, 
-            loanBalance: calculatedLoanBalance 
+            loanBalance: calculatedLoanBalance,
+            interestShare: calculatedInterestShare,
+            grandTotal: calculatedGrandTotal
         };
-    }, [transactions, member.id]);
+    }, [transactions, member.id, allMembers]);
     
     const getTxTypeClass = (type: Transaction['type']) => {
         switch (type) {
@@ -364,7 +374,6 @@ function PassbookView({ member, transactions }: { member: Member, transactions: 
                     <p><span className="font-semibold">ID:</span> {member.id}</p>
                     <p><span className="font-semibold">Mob No:</span> {member.phone}</p>
                     <p><span className="font-semibold">Joined:</span> {new Date(member.joinDate).toLocaleDateString()}</p>
-                    <p className="col-span-2 font-medium"><span className="font-semibold">Deposit Balance:</span> Rs. {depositBalance.toLocaleString('en-IN')}</p>
                     <p className="col-span-2 font-medium"><span className="font-semibold">Loan Balance:</span> Rs. {loanBalance.toLocaleString('en-IN')}</p>
                 </div>
             </div>
@@ -410,6 +419,23 @@ function PassbookView({ member, transactions }: { member: Member, transactions: 
                     )}
                 </CardContent>
             </Card>
+             <CardFooter className="p-4 mt-auto border-t bg-slate-50">
+                 <div className="w-full space-y-2 text-sm">
+                    <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total Deposits</span>
+                        <span className="font-medium">Rs. {depositBalance.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-muted-foreground">Interest Earned</span>
+                        <span className="font-medium">Rs. {interestShare.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <Separator className="my-2" />
+                    <div className="flex justify-between font-bold text-base">
+                        <span>Grand Total</span>
+                        <span>Rs. {grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                 </div>
+            </CardFooter>
         </div>
     )
 }
@@ -718,7 +744,7 @@ export default function MembersPage() {
                     Transaction history for {selectedMember?.name}.
                 </DialogDescription>
             </DialogHeader>
-            {selectedMember && <PassbookView member={selectedMember} transactions={transactionList} />}
+            {selectedMember && memberList && <PassbookView member={selectedMember} allMembers={memberList} transactions={transactionList} />}
         </DialogContent>
       </Dialog>
 
