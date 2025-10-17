@@ -16,6 +16,7 @@ import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { useAdmin } from '@/context/AdminContext';
 
 
 function StatCard({
@@ -62,10 +63,14 @@ function MonthlyOverviewStat({ title, value, loading }: { title: string; value: 
 
 export default function DashboardPage() {
   const { user } = useUser();
+  const { isAdmin } = useAdmin();
   const firestore = useFirestore();
 
-  const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`)) : null, [user, firestore]);
-  const transactionsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
+  const ADMIN_USER_ID = 'wq8CqKB0mlbCiFGMylZejvBHiMT2';
+  const dataUserId = isAdmin ? user?.uid : ADMIN_USER_ID;
+
+  const membersRef = useMemoFirebase(() => dataUserId && firestore ? query(collection(firestore, `users/${dataUserId}/members`)) : null, [dataUserId, firestore]);
+  const transactionsRef = useMemoFirebase(() => dataUserId && firestore ? query(collection(firestore, `users/${dataUserId}/transactions`)) : null, [dataUserId, firestore]);
 
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
   const { data: transactions, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
@@ -122,9 +127,10 @@ export default function DashboardPage() {
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0);
 
+    // Corrected Calculations
     const totalDepositsValue = (memberDeposits + totalInterestValue) - totalExpenses;
     const outstandingLoanValue = totalLoanValue - totalRepaymentValue;
-    const remainingFundValue = (memberDeposits + totalInterestValue + totalRepaymentValue) - totalLoanValue - totalExpenses;
+    const remainingFundValue = (memberDeposits + totalInterestValue + totalRepaymentValue) - totalLoanValue;
     
     return { 
       totalDeposits: totalDepositsValue, 
@@ -435,9 +441,5 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    
-
-    
 
     
