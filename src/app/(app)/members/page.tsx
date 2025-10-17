@@ -368,11 +368,11 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
 
     return (
         <div className="flex flex-col h-full">
-            <div className="p-4 border-b">
+            <div className="p-4 border-b shrink-0">
                  <DialogHeader className="p-0 text-left">
-                    <DialogTitle className='font-headline'>Member Passbook</DialogTitle>
+                    <DialogTitle className='font-headline'>Member Passbook: {member.name}</DialogTitle>
                     <DialogDescription>
-                        Transaction history for {member?.name}.
+                        Transaction history and financial summary.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mt-4">
@@ -382,46 +382,44 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
                     <p className="font-medium"><span className="font-semibold">Loan Balance:</span> Rs. {loanBalance.toLocaleString('en-IN')}</p>
                 </div>
             </div>
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-y-auto">
                 {isLoading ? (
                      <div className="p-6 space-y-2">
                         {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
                      </div>
                 ) : sortedTransactions.length > 0 ? (
-                    <ScrollArea className="h-full">
-                        <Table className="relative">
-                            <TableHeader className="sticky top-0 bg-card z-10">
-                                <TableRow>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Type</TableHead>
-                                    <TableHead className="text-right">Amount</TableHead>
+                    <Table>
+                        <TableHeader className="sticky top-0 bg-card z-10">
+                            <TableRow>
+                                <TableHead>Date</TableHead>
+                                <TableHead>Type</TableHead>
+                                <TableHead className="text-right">Amount</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {sortedTransactions.map(tx => (
+                                <TableRow key={tx.id}>
+                                    <TableCell>{getTransactionDate(tx).toLocaleDateString()}</TableCell>
+                                    <TableCell className='capitalize'>
+                                        <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${getTxTypeClass(tx.type)}`}>
+                                            {getTxTypeIcon(tx.type)}
+                                            {tx.type}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className={`text-right font-medium ${getTxAmountClass(tx.type)}`}>
+                                        {getTxAmountPrefix(tx.type)}Rs. {tx.amount.toLocaleString('en-IN')}
+                                    </TableCell>
                                 </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {sortedTransactions.map(tx => (
-                                    <TableRow key={tx.id}>
-                                        <TableCell>{getTransactionDate(tx).toLocaleDateString()}</TableCell>
-                                        <TableCell className='capitalize'>
-                                            <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${getTxTypeClass(tx.type)}`}>
-                                                {getTxTypeIcon(tx.type)}
-                                                {tx.type}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className={`text-right font-medium ${getTxAmountClass(tx.type)}`}>
-                                            {getTxAmountPrefix(tx.type)}Rs. {tx.amount.toLocaleString('en-IN')}
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </ScrollArea>
+                            ))}
+                        </TableBody>
+                    </Table>
                 ) : (
                     <div className="flex h-full items-center justify-center">
                         <p className="p-6 text-center text-muted-foreground">No transactions found for this member.</p>
                     </div>
                 )}
             </div>
-             <div className="p-4 mt-auto border-t bg-slate-50">
+             <div className="p-4 mt-auto border-t bg-slate-50 shrink-0">
                  <div className="w-full space-y-2 text-sm">
                     <div className="flex justify-between">
                         <span className="text-muted-foreground">Total Deposits</span>
@@ -433,7 +431,7 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
                     </div>
                     <Separator className="my-2" />
                     <div className="flex justify-between font-bold text-base">
-                        <span>Grand Total</span>
+                        <span>Grand Total (Deposits + Interest)</span>
                         <span>Rs. {grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                  </div>
