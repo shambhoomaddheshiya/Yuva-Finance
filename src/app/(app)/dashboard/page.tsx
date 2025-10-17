@@ -122,7 +122,7 @@ export default function DashboardPage() {
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalDepositsValue = memberDeposits + totalInterestValue;
+    const totalDepositsValue = (memberDeposits + totalInterestValue) - totalExpenses;
     const outstandingLoanValue = totalLoanValue - totalRepaymentValue;
     const remainingFundValue = (memberDeposits + totalInterestValue + totalRepaymentValue) - totalLoanValue - totalExpenses;
     
@@ -435,6 +435,8 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
 
     
 
