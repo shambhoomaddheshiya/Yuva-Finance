@@ -5,7 +5,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2, HandCoins, Banknote, PiggyBank, Landmark } from 'lucide-react';
+import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2, HandCoins, Banknote, PiggyBank, Landmark, ShieldX } from 'lucide-react';
 import { collection, doc, getDoc, query, writeBatch, where, getDocs, deleteDoc, Timestamp, updateDoc, increment, setDoc, addDoc } from 'firebase/firestore';
 import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 
@@ -82,7 +82,7 @@ import { FirestorePermissionError } from '@/firebase/errors';
 
 const transactionObjectSchema = z.object({
   memberId: z.string().nonempty('Please select a member.'),
-  type: z.enum(['deposit', 'loan', 'repayment'], {
+  type: z.enum(['deposit', 'loan', 'repayment', 'expense'], {
     required_error: 'You need to select a transaction type.',
   }),
   amount: z.coerce.number().positive('Amount must be a positive number.'),
@@ -238,18 +238,22 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
             <FormItem className="space-y-3">
               <FormLabel>Transaction Type</FormLabel>
               <FormControl>
-                <RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex gap-4">
-                  <FormItem className="flex items-center space-x-3 space-y-0">
+                <RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex gap-x-4 flex-wrap">
+                  <FormItem className="flex items-center space-x-2 space-y-0">
                     <FormControl><RadioGroupItem value="deposit" /></FormControl>
                     <FormLabel className="font-normal">Deposit</FormLabel>
                   </FormItem>
-                  <FormItem className="flex items-center space-x-3 space-y-0">
+                  <FormItem className="flex items-center space-x-2 space-y-0">
                     <FormControl><RadioGroupItem value="loan" /></FormControl>
                     <FormLabel className="font-normal">Loan</FormLabel>
                   </FormItem>
-                  <FormItem className="flex items-center space-x-3 space-y-0">
+                  <FormItem className="flex items-center space-x-2 space-y-0">
                     <FormControl><RadioGroupItem value="repayment" /></FormControl>
                     <FormLabel className="font-normal">Repayment</FormLabel>
+                  </FormItem>
+                  <FormItem className="flex items-center space-x-2 space-y-0">
+                    <FormControl><RadioGroupItem value="expense" /></FormControl>
+                    <FormLabel className="font-normal">Expense</FormLabel>
                   </FormItem>
                 </RadioGroup>
               </FormControl>
@@ -702,6 +706,7 @@ export default function TransactionsPage() {
         case 'deposit': return 'border-transparent bg-green-100 text-green-800';
         case 'loan': return 'border-transparent bg-red-100 text-red-800';
         case 'repayment': return 'border-transparent bg-blue-100 text-blue-800';
+        case 'expense': return 'border-transparent bg-orange-100 text-orange-800';
         default: return '';
     }
   }
@@ -711,6 +716,7 @@ export default function TransactionsPage() {
         case 'deposit': return 'text-green-600';
         case 'loan': return 'text-red-600';
         case 'repayment': return 'text-blue-600';
+        case 'expense': return 'text-orange-600';
         default: return '';
     }
   }
@@ -720,6 +726,7 @@ export default function TransactionsPage() {
       case 'deposit': return <ArrowUp className="mr-1 h-3 w-3" />;
       case 'loan': return <ArrowDown className="mr-1 h-3 w-3" />;
       case 'repayment': return <HandCoins className="mr-1 h-3 w-3" />;
+      case 'expense': return <ShieldX className="mr-1 h-3 w-3" />;
     }
   }
   
@@ -728,6 +735,7 @@ export default function TransactionsPage() {
         case 'deposit': return '+';
         case 'repayment': return '+';
         case 'loan': return '-';
+        case 'expense': return '-';
         default: return '';
     }
   }
@@ -789,7 +797,7 @@ export default function TransactionsPage() {
   
   const summaryTotals = useMemo(() => {
     if (!transactions || !members) {
-      return { totalDeposits: 0, totalRemainingFund: 0, filteredDeposits: 0, filteredLoans: 0, filteredRepayments: 0 };
+      return { totalDeposits: 0, totalRemainingFund: 0, filteredDeposits: 0, filteredLoans: 0, filteredRepayments: 0, filteredExpenses: 0 };
     }
     const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
     const activeTransactions = transactions.filter(t => activeMemberIds.has(t.memberId));
@@ -810,18 +818,24 @@ export default function TransactionsPage() {
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.principal || 0), 0);
 
+    const totalExpenses = activeTransactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0);
+
     const totalDepositsValue = memberDeposits + totalInterest;
-    const remainingFund = (memberDeposits + totalInterest + totalRepayment) - totalLoan;
+    const remainingFund = (memberDeposits + totalInterest + totalRepayment) - totalLoan - totalExpenses;
     
     const filteredTotals = {
         deposits: 0,
         loans: 0,
         repayments: 0,
+        expenses: 0,
     }
     for (const tx of filteredTransactions) {
         if (tx.type === 'deposit') filteredTotals.deposits += tx.amount;
         if (tx.type === 'loan') filteredTotals.loans += tx.amount;
         if (tx.type === 'repayment') filteredTotals.repayments += tx.amount;
+        if (tx.type === 'expense') filteredTotals.expenses += tx.amount;
     }
 
     return { 
@@ -830,6 +844,7 @@ export default function TransactionsPage() {
         filteredDeposits: filteredTotals.deposits,
         filteredLoans: filteredTotals.loans,
         filteredRepayments: filteredTotals.repayments,
+        filteredExpenses: filteredTotals.expenses,
     };
   }, [transactions, members, filteredTransactions]);
 
@@ -893,7 +908,7 @@ export default function TransactionsPage() {
         </Dialog>
       </div>
       
-       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
          <StatCard
             title="Filtered Deposits"
             value={loading ? '...' : `Rs. ${summaryTotals.filteredDeposits.toLocaleString('en-IN')}`}
@@ -907,6 +922,11 @@ export default function TransactionsPage() {
            <StatCard
             title="Filtered Loans"
             value={loading ? '...' : `Rs. ${summaryTotals.filteredLoans.toLocaleString('en-IN')}`}
+            loading={loading}
+          />
+          <StatCard
+            title="Filtered Expenses"
+            value={loading ? '...' : `Rs. ${summaryTotals.filteredExpenses.toLocaleString('en-IN')}`}
             loading={loading}
           />
           <StatCard
@@ -949,6 +969,7 @@ export default function TransactionsPage() {
                     <div className="flex items-center space-x-2"><RadioGroupItem value="deposit" id="deposit" /><Label htmlFor="deposit">Deposits</Label></div>
                     <div className="flex items-center space-x-2"><RadioGroupItem value="loan" id="loan" /><Label htmlFor="loan">Loans</Label></div>
                     <div className="flex items-center space-x-2"><RadioGroupItem value="repayment" id="repayment" /><Label htmlFor="repayment">Repayments</Label></div>
+                     <div className="flex items-center space-x-2"><RadioGroupItem value="expense" id="expense" /><Label htmlFor="expense">Expenses</Label></div>
                   </RadioGroup>
                 </div>
                 <div className="flex items-center gap-4">

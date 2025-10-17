@@ -5,7 +5,7 @@ import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
-import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins, LibraryBig, UserCheck, UserX, Scale, CalendarClock } from 'lucide-react';
+import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins, LibraryBig, UserCheck, UserX, Scale, CalendarClock, ShieldX } from 'lucide-react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -117,10 +117,14 @@ export default function DashboardPage() {
     const totalInterestValue = activeTransactions
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.interest || 0), 0);
+    
+    const totalExpenses = activeTransactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0);
 
     const totalDepositsValue = memberDeposits + totalInterestValue;
     const outstandingLoanValue = totalLoanValue - totalRepaymentValue;
-    const remainingFundValue = (memberDeposits + totalInterestValue + totalRepaymentValue) - totalLoanValue;
+    const remainingFundValue = (memberDeposits + totalInterestValue + totalRepaymentValue) - totalLoanValue - totalExpenses;
     
     return { 
       totalDeposits: totalDepositsValue, 
@@ -194,6 +198,7 @@ export default function DashboardPage() {
         case 'deposit': return 'border-transparent bg-green-100 text-green-800';
         case 'loan': return 'border-transparent bg-red-100 text-red-800';
         case 'repayment': return 'border-transparent bg-blue-100 text-blue-800';
+        case 'expense': return 'border-transparent bg-orange-100 text-orange-800';
         default: return '';
     }
   }
@@ -203,6 +208,7 @@ export default function DashboardPage() {
       case 'deposit': return <ArrowUp className="mr-1 h-3 w-3" />;
       case 'loan': return <ArrowDown className="mr-1 h-3 w-3" />;
       case 'repayment': return <HandCoins className="mr-1 h-3 w-3" />;
+      case 'expense': return <ShieldX className="mr-1 h-3 w-3" />;
     }
   }
 

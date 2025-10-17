@@ -13,8 +13,8 @@ export type Member = {
 export type Transaction = {
   id: string;
   memberId: string;
-  type: 'deposit' | 'loan' | 'repayment';
-  amount: number; // For deposit/loan, this is the amount. For repayment, it's total amount paid (principal + interest).
+  type: 'deposit' | 'loan' | 'repayment' | 'expense';
+  amount: number; // For deposit/loan/expense, this is the amount. For repayment, it's total amount paid (principal + interest).
   date: Timestamp | string;
   description?: string;
   principal?: number; // For repayments, the principal amount
