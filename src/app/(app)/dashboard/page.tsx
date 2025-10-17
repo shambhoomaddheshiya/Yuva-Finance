@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useMemo } from 'react';
@@ -127,7 +126,6 @@ export default function DashboardPage() {
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    // Corrected Calculations
     const totalDepositsValue = (memberDeposits + totalInterestValue) - totalExpenses;
     const outstandingLoanValue = totalLoanValue - totalRepaymentValue;
     const remainingFundValue = (memberDeposits + totalInterestValue + totalRepaymentValue) - totalLoanValue;
@@ -441,5 +439,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    

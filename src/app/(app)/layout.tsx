@@ -7,6 +7,7 @@ import { Loader2 } from 'lucide-react';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { SidebarNav } from '@/components/sidebar-nav';
 import { Header } from '@/components/header';
+import { AdminProvider } from '@/context/AdminContext';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser();
@@ -27,12 +28,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <SidebarProvider>
-      <SidebarNav />
-      <SidebarInset>
-        <Header />
-        <main className="flex-1 p-4 md:p-6">{children}</main>
-      </SidebarInset>
-    </SidebarProvider>
+    <AdminProvider>
+      <SidebarProvider>
+        <SidebarNav />
+        <SidebarInset>
+          <Header />
+          <main className="flex-1 p-4 md:p-6">{children}</main>
+        </SidebarInset>
+      </SidebarProvider>
+    </AdminProvider>
   );
 }
