@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useMemo } from 'react';
@@ -307,38 +308,8 @@ export default function DashboardPage() {
         </Card>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4">
-          <CardHeader>
-            <CardTitle className="font-headline">Overview</CardTitle>
-          </CardHeader>
-          <CardContent className="pl-2">
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData}>
-                <XAxis
-                  dataKey="name"
-                  stroke="#888888"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  stroke="#888888"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value) => `Rs. ${Number(value) / 1000}k`}
-                />
-                <Tooltip
-                  cursor={{ fill: 'hsl(var(--muted))' }}
-                  contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
-                  formatter={(value: number) => [`Rs. ${value.toLocaleString('en-IN')}`, 'Total']}
-                />
-                <Bar dataKey="total" radius={[4, 4, 0, 0]} barSize={15} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-        <Card className="col-span-4 lg:col-span-3">
+        
+        <Card className="col-span-4 lg:col-span-7">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
                 <CardTitle className="font-headline text-lg">Monthly Overview</CardTitle>
@@ -382,60 +353,9 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-       <Card>
-            <CardHeader>
-                <CardTitle className="font-headline">Recent Transactions</CardTitle>
-                <CardDescription>The last 5 transactions recorded in the group.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                {loading ? (
-                    <div className="space-y-4">
-                        {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
-                    </div>
-                ) : recentTransactions.length > 0 ? (
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="h-10">Member</TableHead>
-                                <TableHead className="h-10">Type</TableHead>
-                                <TableHead className="h-10">Date</TableHead>
-                                <TableHead className="text-right h-10">Amount</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {recentTransactions.map(tx => {
-                                const member = members?.find(m => m.id === tx.memberId);
-                                return (
-                                <TableRow key={tx.id}>
-                                    <TableCell className="py-2">
-                                        <div className="flex items-center gap-2">
-                                            <Avatar className="h-8 w-8">
-                                                <AvatarFallback className="text-xs">{member ? getInitials(member.name) : '?'}</AvatarFallback>
-                                            </Avatar>
-                                            <div className="font-medium text-sm">{member?.name || 'Unknown'}</div>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="py-2">
-                                        <div className={cn(
-                                                'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold',
-                                                getTxTypeClass(tx.type)
-                                            )}>
-                                            {getTxTypeIcon(tx.type)}
-                                            {tx.type}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="py-2 text-sm">{format(getTransactionDate(tx), 'PPP')}</TableCell>
-                                    <TableCell className="text-right font-mono py-2 text-sm">Rs. {tx.amount.toLocaleString('en-IN')}</TableCell>
-                                </TableRow>
-                                )
-                            })}
-                        </TableBody>
-                    </Table>
-                ) : (
-                    <p className="text-center text-muted-foreground py-8">No transactions found.</p>
-                )}
-            </CardContent>
-        </Card>
+       
     </div>
   );
 }
+
+    
