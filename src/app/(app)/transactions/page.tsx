@@ -386,13 +386,13 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
             </FormItem>
           )}
         />
-        <DialogFooter>
-          <div className="mx-auto">
+        <DialogFooter className="flex-col items-stretch">
+          <div className="w-full">
             <button
               type="submit"
               disabled={isLoading}
               className={cn(
-                'w-64 rounded-md overflow-hidden shadow-lg',
+                'w-full rounded-md overflow-hidden shadow-lg',
                 'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
                 isLoading ? 'cursor-not-allowed' : 'cursor-pointer'
               )}
@@ -408,7 +408,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
               </div>
             </button>
             {selectedMemberId && (
-              <div className="mt-2 text-sm border-t pt-2 w-64">
+              <div className="mt-2 text-sm border-t pt-2 w-full">
                 <div className="flex justify-between items-center py-1">
                   <span className="text-muted-foreground">Total Deposit</span>
                   <span className="font-medium font-mono">
@@ -1169,6 +1169,8 @@ export default function TransactionsPage() {
     </div>
   );
 }
+
+    
 
     
 
