@@ -386,34 +386,32 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
             </FormItem>
           )}
         />
-        <DialogFooter className="pt-4">
-          <div className="flex items-center justify-between w-full gap-4">
-              <Button type="submit" disabled={isLoading} className="flex-shrink-0">
-                  {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Record Transaction'}
-              </Button>
-              {selectedMemberId && (
-              <div className="text-sm text-right flex-grow">
-                  <div className="flex justify-between items-center py-1">
-                  <span className="text-muted-foreground mr-2">Total Deposit</span>
-                  <span className="font-medium font-mono">
-                      Rs. {memberBalances.depositBalance.toLocaleString('en-IN')}
-                  </span>
-                  </div>
-                  <div className="flex justify-between items-center py-1">
-                  <span className="text-muted-foreground mr-2">Active Loan</span>
-                  <span className="font-medium font-mono">
-                      Rs. {memberBalances.loanBalance.toLocaleString('en-IN')}
-                  </span>
-                  </div>
-                  <div className="flex justify-between items-center py-1">
-                  <span className="text-muted-foreground mr-2">Remaining Fund</span>
-                  <span className="font-medium font-mono">
-                      Rs. {(memberBalances.depositBalance - memberBalances.loanBalance).toLocaleString('en-IN')}
-                  </span>
-                  </div>
-              </div>
-              )}
-          </div>
+        <DialogFooter className="pt-4 flex-col gap-4">
+             <Button type="submit" disabled={isLoading} className="w-full">
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Record Transaction'}
+            </Button>
+             {selectedMemberId && (
+                <div className="text-sm w-full space-y-1">
+                    <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Total Deposit</span>
+                        <span className="font-medium font-mono">
+                            Rs. {memberBalances.depositBalance.toLocaleString('en-IN')}
+                        </span>
+                    </div>
+                     <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Active Loan</span>
+                        <span className="font-medium font-mono">
+                            Rs. {memberBalances.loanBalance.toLocaleString('en-IN')}
+                        </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Remaining Fund</span>
+                        <span className="font-medium font-mono">
+                            Rs. {(memberBalances.depositBalance - memberBalances.loanBalance).toLocaleString('en-IN')}
+                        </span>
+                    </div>
+                </div>
+            )}
         </DialogFooter>
       </form>
     </Form>
@@ -869,7 +867,7 @@ export default function TransactionsPage() {
       .filter(t => t.type === 'loan')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalRepayment = activeTransactions
+    const totalRepaymentPrincipal = activeTransactions
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.principal || 0), 0);
 
@@ -878,7 +876,7 @@ export default function TransactionsPage() {
       .reduce((sum, t) => sum + t.amount, 0);
 
     const totalDepositsValue = (memberDeposits + totalInterest) - totalExpenses;
-    const remainingFund = (memberDeposits + totalInterest + totalRepayment) - totalLoan;
+    const remainingFund = (memberDeposits + totalInterest + totalRepaymentPrincipal) - totalLoan;
     
     const filteredTotals = {
         deposits: 0,
@@ -1154,10 +1152,3 @@ export default function TransactionsPage() {
     </div>
   );
 }
-
-    
-
-    
-
-    
-
