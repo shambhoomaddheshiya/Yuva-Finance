@@ -386,27 +386,50 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
             </FormItem>
           )}
         />
-        <DialogFooter className="flex-col pt-4">
-            <Button type="submit" disabled={isLoading} className="w-full">
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Record Transaction
-            </Button>
+        <DialogFooter>
+          <div className="mx-auto">
+            <button
+              type="submit"
+              disabled={isLoading}
+              className={cn(
+                'w-64 rounded-md overflow-hidden shadow-lg',
+                'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+                isLoading ? 'cursor-not-allowed' : 'cursor-pointer'
+              )}
+            >
+              <div className="bg-primary text-primary-foreground text-center py-2 px-4 font-semibold">
+                {isLoading ? (
+                  <span className="flex items-center justify-center">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Recording...
+                  </span>
+                ) : (
+                  'Record Transaction'
+                )}
+              </div>
+            </button>
             {selectedMemberId && (
-            <div className="mt-4 space-y-2 text-sm">
-                <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Total Deposit</span>
-                    <span className="font-medium font-mono">Rs. {memberBalances.depositBalance.toLocaleString('en-IN')}</span>
+              <div className="mt-2 text-sm border-t pt-2 w-64">
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-muted-foreground">Total Deposit</span>
+                  <span className="font-medium font-mono">
+                    Rs. {memberBalances.depositBalance.toLocaleString('en-IN')}
+                  </span>
                 </div>
-                <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Active Loan</span>
-                    <span className="font-medium font-mono">Rs. {memberBalances.loanBalance.toLocaleString('en-IN')}</span>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-muted-foreground">Active Loan</span>
+                  <span className="font-medium font-mono">
+                    Rs. {memberBalances.loanBalance.toLocaleString('en-IN')}
+                  </span>
                 </div>
-                <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Remaining Fund</span>
-                    <span className="font-medium font-mono">Rs. {(memberBalances.depositBalance - memberBalances.loanBalance).toLocaleString('en-IN')}</span>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-muted-foreground">Remaining Fund</span>
+                  <span className="font-medium font-mono">
+                    Rs. {(memberBalances.depositBalance - memberBalances.loanBalance).toLocaleString('en-IN')}
+                  </span>
                 </div>
-            </div>
+              </div>
             )}
+          </div>
         </DialogFooter>
       </form>
     </Form>
@@ -1146,5 +1169,7 @@ export default function TransactionsPage() {
     </div>
   );
 }
+
+    
 
     
