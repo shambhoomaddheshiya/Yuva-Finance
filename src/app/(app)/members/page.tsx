@@ -5,7 +5,7 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX, HandCoins, Percent } from 'lucide-react';
+import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX, HandCoins, Percent, ShieldX } from 'lucide-react';
 import { format, getYear } from 'date-fns';
 import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
@@ -321,7 +321,11 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             .filter(t => t.type === 'repayment')
             .reduce((sum, t) => sum + (t.principal || 0), 0);
 
-        const calculatedLoanBalance = loanTotal - repaymentTotal;
+        const loanWaivedTotal = sorted
+            .filter(t => t.type === 'loan-waived')
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        const calculatedLoanBalance = loanTotal - repaymentTotal - loanWaivedTotal;
         const calculatedInterestShare = activeMembersCount > 0 ? totalInterest / activeMembersCount : 0;
         const calculatedGrandTotal = depositTotal + calculatedInterestShare;
 
@@ -339,6 +343,7 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             case 'deposit': return 'border-transparent bg-green-100 text-green-800';
             case 'loan': return 'border-transparent bg-red-100 text-red-800';
             case 'repayment': return 'border-transparent bg-blue-100 text-blue-800';
+            case 'loan-waived': return 'border-transparent bg-yellow-100 text-yellow-800';
             default: return '';
         }
     }
@@ -347,6 +352,7 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             case 'deposit': return 'text-green-600';
             case 'loan': return 'text-red-600';
             case 'repayment': return 'text-blue-600';
+            case 'loan-waived': return 'text-yellow-600';
             default: return '';
         }
     }
@@ -355,6 +361,7 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
           case 'deposit': return <ArrowUp className="mr-1 h-3 w-3" />;
           case 'loan': return <ArrowDown className="mr-1 h-3 w-3" />;
           case 'repayment': return <HandCoins className="mr-1 h-3 w-3" />;
+          case 'loan-waived': return <ShieldX className="mr-1 h-3 w-3" />;
         }
       }
       const getTxAmountPrefix = (type: Transaction['type']) => {
@@ -362,6 +369,7 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             case 'deposit': return '+';
             case 'repayment': return '+';
             case 'loan': return '-';
+            case 'loan-waived': return '-';
             default: return '';
         }
       }
@@ -404,7 +412,7 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
                                     <TableCell className='capitalize'>
                                         <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${getTxTypeClass(tx.type)}`}>
                                             {getTxTypeIcon(tx.type)}
-                                            {tx.type}
+                                            {tx.type.replace('-', ' ')}
                                         </div>
                                     </TableCell>
                                     <TableCell className={`text-right font-medium ${getTxAmountClass(tx.type)}`}>
@@ -479,6 +487,8 @@ export default function MembersPage() {
             current.loanBalance += tx.amount;
         } else if (tx.type === 'repayment') {
             current.loanBalance -= (tx.principal || 0);
+        } else if (tx.type === 'loan-waived') {
+            current.loanBalance -= tx.amount;
         }
     }
     return balances;
@@ -764,7 +774,3 @@ export default function MembersPage() {
     </div>
   );
 }
-
-    
-
-    

@@ -124,7 +124,7 @@ export default function DashboardPage() {
       .reduce((sum, t) => sum + (t.interest || 0), 0);
     
     const totalExpenses = activeTransactions
-      .filter(t => t.type === 'expense')
+      .filter(t => t.type === 'expense' || t.type === 'loan-waived')
       .reduce((sum, t) => sum + t.amount, 0);
 
     const totalDepositsValue = (memberDeposits + totalInterestValue) - totalExpenses;
@@ -204,6 +204,7 @@ export default function DashboardPage() {
         case 'loan': return 'border-transparent bg-red-100 text-red-800';
         case 'repayment': return 'border-transparent bg-blue-100 text-blue-800';
         case 'expense': return 'border-transparent bg-orange-100 text-orange-800';
+        case 'loan-waived': return 'border-transparent bg-yellow-100 text-yellow-800';
         default: return '';
     }
   }
@@ -214,6 +215,7 @@ export default function DashboardPage() {
       case 'loan': return <ArrowDown className="mr-1 h-3 w-3" />;
       case 'repayment': return <HandCoins className="mr-1 h-3 w-3" />;
       case 'expense': return <ShieldX className="mr-1 h-3 w-3" />;
+      case 'loan-waived': return <ShieldX className="mr-1 h-3 w-3" />;
     }
   }
 
@@ -306,6 +308,13 @@ export default function DashboardPage() {
                  <p className="text-xs text-muted-foreground">Outstanding loan balance</p>
             </CardContent>
         </Card>
+        <StatCard
+            title="Outstanding Loan"
+            value={loading ? '...' : `Rs. ${outstandingLoan.toLocaleString('en-IN')}`}
+            icon={Scale}
+            loading={loading}
+            description="Pending loan recovery"
+          />
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         
@@ -357,5 +366,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    

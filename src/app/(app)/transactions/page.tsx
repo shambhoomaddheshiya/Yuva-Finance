@@ -78,11 +78,12 @@ import { Label } from '@/components/ui/label';
 import { DateRange } from 'react-day-picker';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { Separator } from '@/components/ui/separator';
 
 
 const transactionObjectSchema = z.object({
   memberId: z.string().nonempty('Please select a member.'),
-  type: z.enum(['deposit', 'loan', 'repayment', 'expense'], {
+  type: z.enum(['deposit', 'loan', 'repayment', 'expense', 'loan-waived'], {
     required_error: 'You need to select a transaction type.',
   }),
   amount: z.coerce.number().positive('Amount must be a positive number.'),
@@ -125,11 +126,16 @@ const editTransactionSchema = editTransactionObjectSchema.refine(data => {
 function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const { user } = useUser();
   const firestore = useFirestore();
+
   const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`), where('status', '==', 'active')) : null, [user, firestore]);
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
+
+  const allTransactionsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
+  const { data: allTransactions } = useCollection<Transaction>(allTransactionsRef);
+
 
   const form = useForm<z.infer<typeof transactionSchema>>({
     resolver: zodResolver(transactionSchema),
@@ -157,10 +163,32 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
 
   const handleMemberChange = (memberId: string) => {
-    const member = members?.find(m => m.id === memberId) || null;
-    setSelectedMember(member);
+    setSelectedMemberId(memberId);
     form.setValue('memberId', memberId);
   }
+
+  const memberBalances = useMemo(() => {
+    if (!selectedMemberId || !allTransactions) return { depositBalance: 0, loanBalance: 0 };
+    
+    let depositBalance = 0;
+    let loanBalance = 0;
+
+    for (const tx of allTransactions) {
+      if (tx.memberId === selectedMemberId) {
+        if (tx.type === 'deposit') {
+          depositBalance += tx.amount;
+        } else if (tx.type === 'loan') {
+          loanBalance += tx.amount;
+        } else if (tx.type === 'repayment') {
+          loanBalance -= (tx.principal || 0);
+        } else if (tx.type === 'loan-waived') {
+            loanBalance -= tx.amount;
+        }
+      }
+    }
+    return { depositBalance, loanBalance };
+  }, [selectedMemberId, allTransactions]);
+
 
   async function onSubmit(values: z.infer<typeof transactionSchema>) {
     if (!user || !firestore) return;
@@ -222,11 +250,6 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                   ))}
                 </SelectContent>
               </Select>
-               {selectedMember && (
-                <div className="text-sm text-muted-foreground mt-2 grid grid-cols-2">
-                    {/* Balances are now calculated dynamically */}
-                </div>
-              )}
               <FormMessage />
             </FormItem>
           )}
@@ -254,6 +277,10 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                   <FormItem className="flex items-center space-x-2 space-y-0">
                     <FormControl><RadioGroupItem value="expense" /></FormControl>
                     <FormLabel className="font-normal">Expense</FormLabel>
+                  </FormItem>
+                   <FormItem className="flex items-center space-x-2 space-y-0">
+                    <FormControl><RadioGroupItem value="loan-waived" /></FormControl>
+                    <FormLabel className="font-normal">Loan (Waived)</FormLabel>
                   </FormItem>
                 </RadioGroup>
               </FormControl>
@@ -359,11 +386,26 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
             </FormItem>
           )}
         />
-        <DialogFooter>
+        <DialogFooter className="flex-col items-stretch">
           <Button type="submit" disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Record Transaction
           </Button>
+          {selectedMemberId && (
+            <Card className="mt-4">
+                <CardContent className="p-3 space-y-2 text-sm">
+                    <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Total Deposit</span>
+                        <span className="font-medium">Rs. {memberBalances.depositBalance.toLocaleString('en-IN')}</span>
+                    </div>
+                     <Separator />
+                    <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Active Loan</span>
+                        <span className="font-medium">Rs. {memberBalances.loanBalance.toLocaleString('en-IN')}</span>
+                    </div>
+                </CardContent>
+            </Card>
+          )}
         </DialogFooter>
       </form>
     </Form>
@@ -707,6 +749,7 @@ export default function TransactionsPage() {
         case 'loan': return 'border-transparent bg-red-100 text-red-800';
         case 'repayment': return 'border-transparent bg-blue-100 text-blue-800';
         case 'expense': return 'border-transparent bg-orange-100 text-orange-800';
+        case 'loan-waived': return 'border-transparent bg-yellow-100 text-yellow-800';
         default: return '';
     }
   }
@@ -717,6 +760,7 @@ export default function TransactionsPage() {
         case 'loan': return 'text-red-600';
         case 'repayment': return 'text-blue-600';
         case 'expense': return 'text-orange-600';
+        case 'loan-waived': return 'text-yellow-600';
         default: return '';
     }
   }
@@ -727,6 +771,7 @@ export default function TransactionsPage() {
       case 'loan': return <ArrowDown className="mr-1 h-3 w-3" />;
       case 'repayment': return <HandCoins className="mr-1 h-3 w-3" />;
       case 'expense': return <ShieldX className="mr-1 h-3 w-3" />;
+      case 'loan-waived': return <ShieldX className="mr-1 h-3 w-3" />;
     }
   }
   
@@ -736,6 +781,7 @@ export default function TransactionsPage() {
         case 'repayment': return '+';
         case 'loan': return '-';
         case 'expense': return '-';
+        case 'loan-waived': return '-';
         default: return '';
     }
   }
@@ -819,7 +865,7 @@ export default function TransactionsPage() {
       .reduce((sum, t) => sum + (t.principal || 0), 0);
 
     const totalExpenses = activeTransactions
-      .filter(t => t.type === 'expense')
+      .filter(t => t.type === 'expense' || t.type === 'loan-waived')
       .reduce((sum, t) => sum + t.amount, 0);
 
     const totalDepositsValue = memberDeposits + totalInterest;
@@ -835,7 +881,7 @@ export default function TransactionsPage() {
         if (tx.type === 'deposit') filteredTotals.deposits += tx.amount;
         if (tx.type === 'loan') filteredTotals.loans += tx.amount;
         if (tx.type === 'repayment') filteredTotals.repayments += tx.amount;
-        if (tx.type === 'expense') filteredTotals.expenses += tx.amount;
+        if (tx.type === 'expense' || tx.type === 'loan-waived') filteredTotals.expenses += tx.amount;
     }
 
     return { 
@@ -970,6 +1016,7 @@ export default function TransactionsPage() {
                     <div className="flex items-center space-x-2"><RadioGroupItem value="loan" id="loan" /><Label htmlFor="loan">Loans</Label></div>
                     <div className="flex items-center space-x-2"><RadioGroupItem value="repayment" id="repayment" /><Label htmlFor="repayment">Repayments</Label></div>
                      <div className="flex items-center space-x-2"><RadioGroupItem value="expense" id="expense" /><Label htmlFor="expense">Expenses</Label></div>
+                     <div className="flex items-center space-x-2"><RadioGroupItem value="loan-waived" id="loan-waived" /><Label htmlFor="loan-waived">Loan Waived</Label></div>
                   </RadioGroup>
                 </div>
                 <div className="flex items-center gap-4">
