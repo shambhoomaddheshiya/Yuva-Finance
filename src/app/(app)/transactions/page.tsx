@@ -386,8 +386,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
             </FormItem>
           )}
         />
-        <DialogFooter className="flex-col items-stretch">
-          <div className="w-full">
+        <DialogFooter className="flex-col items-center pt-4">
             <button
               type="submit"
               disabled={isLoading}
@@ -408,7 +407,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
               </div>
             </button>
             {selectedMemberId && (
-              <div className="mt-2 text-sm border-t pt-2 w-full">
+              <div className="mt-2 text-sm pt-2 w-full">
                 <div className="flex justify-between items-center py-1">
                   <span className="text-muted-foreground">Total Deposit</span>
                   <span className="font-medium font-mono">
@@ -429,7 +428,6 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                 </div>
               </div>
             )}
-          </div>
         </DialogFooter>
       </form>
     </Form>
@@ -866,8 +864,9 @@ export default function TransactionsPage() {
   }, [transactions, members, searchQuery, typeFilter, dateFilter, selectedYear, selectedMonth, customDateRange]);
   
   const summaryTotals = useMemo(() => {
+    const initialValues = { totalDeposits: 0, totalRemainingFund: 0, filteredDeposits: 0, filteredLoans: 0, filteredRepayments: 0, filteredExpenses: 0 };
     if (!transactions || !members) {
-      return { totalDeposits: 0, totalRemainingFund: 0, filteredDeposits: 0, filteredLoans: 0, filteredRepayments: 0, filteredExpenses: 0 };
+      return initialValues;
     }
     const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
     const activeTransactions = transactions.filter(t => activeMemberIds.has(t.memberId));
@@ -892,8 +891,8 @@ export default function TransactionsPage() {
       .filter(t => t.type === 'expense' || t.type === 'loan-waived')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalDepositsValue = memberDeposits + totalInterest;
-    const remainingFund = (memberDeposits + totalInterest + totalRepayment) - totalLoan - totalExpenses;
+    const totalDepositsValue = (memberDeposits + totalInterest) - totalExpenses;
+    const remainingFund = (memberDeposits + totalInterest + totalRepayment) - totalLoan;
     
     const filteredTotals = {
         deposits: 0,
