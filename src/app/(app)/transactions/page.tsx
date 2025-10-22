@@ -386,26 +386,28 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
             </FormItem>
           )}
         />
-        <DialogFooter className="flex-col items-stretch">
-          <Button type="submit" disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Record Transaction
-          </Button>
-          {selectedMemberId && (
-            <Card className="mt-4">
-                <CardContent className="p-3 space-y-2 text-sm">
-                    <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground">Total Deposit</span>
-                        <span className="font-medium">Rs. {memberBalances.depositBalance.toLocaleString('en-IN')}</span>
-                    </div>
-                     <Separator />
-                    <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground">Active Loan</span>
-                        <span className="font-medium">Rs. {memberBalances.loanBalance.toLocaleString('en-IN')}</span>
-                    </div>
-                </CardContent>
-            </Card>
-          )}
+        <DialogFooter>
+             <div className="flex items-start gap-4">
+                <Button type="submit" disabled={isLoading}>
+                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Record Transaction
+                </Button>
+                {selectedMemberId && (
+                <Card>
+                    <CardContent className="p-3 space-y-2 text-sm w-52">
+                        <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Total Deposit</span>
+                            <span className="font-medium">Rs. {memberBalances.depositBalance.toLocaleString('en-IN')}</span>
+                        </div>
+                        <Separator />
+                        <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Active Loan</span>
+                            <span className="font-medium">Rs. {memberBalances.loanBalance.toLocaleString('en-IN')}</span>
+                        </div>
+                    </CardContent>
+                </Card>
+                )}
+             </div>
         </DialogFooter>
       </form>
     </Form>
