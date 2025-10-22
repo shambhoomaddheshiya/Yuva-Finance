@@ -395,17 +395,15 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
             <div className="mt-4 space-y-2 text-sm">
                 <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Total Deposit</span>
-                    <span className="font-medium">Rs. {memberBalances.depositBalance.toLocaleString('en-IN')}</span>
+                    <span className="font-medium font-mono">Rs. {memberBalances.depositBalance.toLocaleString('en-IN')}</span>
                 </div>
-                <Separator />
                 <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Active Loan</span>
-                    <span className="font-medium">Rs. {memberBalances.loanBalance.toLocaleString('en-IN')}</span>
+                    <span className="font-medium font-mono">Rs. {memberBalances.loanBalance.toLocaleString('en-IN')}</span>
                 </div>
-                 <Separator />
                 <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Remaining Fund</span>
-                    <span className="font-medium">Rs. {(memberBalances.depositBalance - memberBalances.loanBalance).toLocaleString('en-IN')}</span>
+                    <span className="font-medium font-mono">Rs. {(memberBalances.depositBalance - memberBalances.loanBalance).toLocaleString('en-IN')}</span>
                 </div>
             </div>
             )}
