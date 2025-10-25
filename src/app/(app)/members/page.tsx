@@ -447,9 +447,9 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
                                             <p className="text-muted-foreground">Amount: Rs. {loan.amount.toLocaleString('en-IN')} @ {loan.interestRate}%</p>
                                         </div>
                                         {loan.isClosed ? (
-                                            <Badge variant="secondary" className='bg-green-100 text-green-800'>Closed</Badge>
+                                            <Badge variant="secondary">Closed</Badge>
                                         ) : (
-                                            <Badge variant="secondary" className='bg-yellow-100 text-yellow-800'>Active</Badge>
+                                            <Badge variant="secondary" className='bg-green-100 text-green-800'>Active</Badge>
                                         )}
                                     </div>
                                     <Separator className="my-2" />
