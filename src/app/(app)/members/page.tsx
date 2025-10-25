@@ -721,7 +721,7 @@ export default function MembersPage() {
                      <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0" disabled={(isUpdatingStatus && selectedMember?.id === member.id) || member.status === 'closed'}>
+                          <Button variant="ghost" className="h-8 w-8 p-0" disabled={isUpdatingStatus && selectedMember?.id === member.id}>
                             {(isUpdatingStatus && selectedMember?.id === member.id) ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
                             <span className="sr-only">Open menu</span>
                           </Button>
@@ -741,12 +741,12 @@ export default function MembersPage() {
                                 <UserX className="mr-2 h-4 w-4" />
                                 <span>Deactivate</span>
                             </DropdownMenuItem>
-                          ) : (
+                          ) : member.status === 'inactive' ? (
                             <DropdownMenuItem onClick={() => handleStatusChange(member, 'active')} disabled={member.status === 'closed'}>
                                 <UserCheck className="mr-2 h-4 w-4" />
                                 <span>Activate</span>
                             </DropdownMenuItem>
-                          )}
+                          ) : null}
                           <DropdownMenuItem onClick={() => handleCloseAccount(member)} disabled={member.status === 'closed'}>
                             <Archive className="mr-2 h-4 w-4" />
                             <span>Close Account</span>
