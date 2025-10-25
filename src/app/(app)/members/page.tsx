@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX, HandCoins, Percent, ShieldX, Archive } from 'lucide-react';
-import { format, getYear } from 'date-fns';
+import { format, getYear, endOfMonth } from 'date-fns';
 import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 
@@ -300,18 +300,45 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             return { sortedTransactions: [], depositBalance: 0, loanBalance: 0, interestShare: 0, grandTotal: 0 };
         }
         
-        // Active members for interest calculation now includes 'closed' members who were previously active
-        const membersForInterestCalc = allMembers.filter(m => m.status === 'active' || m.status === 'closed');
-        const contributingMembersCount = membersForInterestCalc.length;
-
-        const allContributingMemberIds = new Set(membersForInterestCalc.map(m => m.id));
-
-        const totalInterest = transactions
-            .filter(t => t.type === 'repayment' && allContributingMemberIds.has(t.memberId))
-            .reduce((sum, t) => sum + (t.interest || 0), 0);
-
         const memberTransactions = transactions.filter(t => t.memberId === member.id);
         const sorted = [...memberTransactions].sort((a, b) => getTransactionDate(b).getTime() - getTransactionDate(a).getTime());
+
+        let calculatedInterestShare = 0;
+
+        if (member.status === 'active') {
+            const contributingMembers = allMembers.filter(m => m.status === 'active' || m.status === 'closed');
+            const contributingMemberIds = new Set(contributingMembers.map(m => m.id));
+            const totalInterest = transactions
+                .filter(t => t.type === 'repayment' && contributingMemberIds.has(t.memberId))
+                .reduce((sum, t) => sum + (t.interest || 0), 0);
+            
+            if (contributingMembers.length > 0) {
+                calculatedInterestShare = totalInterest / contributingMembers.length;
+            }
+
+        } else if ((member.status === 'inactive' || member.status === 'closed') && sorted.length > 0) {
+            const lastTxDate = getTransactionDate(sorted[0]);
+            const cutoffDate = endOfMonth(lastTxDate);
+            
+            const historicalContributingMembers = allMembers.filter(m => {
+                const joinDate = new Date(m.joinDate);
+                const isActiveOrClosed = m.status === 'active' || m.status === 'closed';
+                // Member was part of the group before or during the cutoff month
+                return joinDate <= cutoffDate && (isActiveOrClosed || (m.id === member.id));
+            });
+            const historicalContributingMemberIds = new Set(historicalContributingMembers.map(m => m.id));
+
+            const historicalTotalInterest = transactions
+                .filter(t => {
+                    const txDate = getTransactionDate(t);
+                    return t.type === 'repayment' && txDate <= cutoffDate && historicalContributingMemberIds.has(t.memberId);
+                })
+                .reduce((sum, t) => sum + (t.interest || 0), 0);
+
+            if (historicalContributingMembers.length > 0) {
+                calculatedInterestShare = historicalTotalInterest / historicalContributingMembers.length;
+            }
+        }
         
         const depositTotal = sorted
             .filter(t => t.type === 'deposit')
@@ -330,9 +357,6 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             .reduce((sum, t) => sum + t.amount, 0);
 
         const calculatedLoanBalance = loanTotal - repaymentTotal - loanWaivedTotal;
-        
-        // Only give interest share if the member is 'active' or 'closed'. 'inactive' members don't get a share.
-        const calculatedInterestShare = member.status !== 'inactive' && contributingMembersCount > 0 ? totalInterest / contributingMembersCount : 0;
         const calculatedGrandTotal = depositTotal + calculatedInterestShare;
 
         return { 
@@ -465,7 +489,7 @@ export default function MembersPage() {
   const transactionsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
   
   const { data: memberList, isLoading: membersLoading } = useCollection<Member>(membersRef);
-  const { data: transactionList, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
+  const { data: transactionList, isLoading: txLoading } = useCollection<Transaction>(transactionList);
 
   const loading = membersLoading || txLoading;
 
