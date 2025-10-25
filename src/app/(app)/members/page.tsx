@@ -489,7 +489,7 @@ export default function MembersPage() {
   const transactionsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
   
   const { data: memberList, isLoading: membersLoading } = useCollection<Member>(membersRef);
-  const { data: transactionList, isLoading: txLoading } = useCollection<Transaction>(transactionList);
+  const { data: transactionList, isLoading: txLoading } = useCollection<Transaction>(transactionsRef);
 
   const loading = membersLoading || txLoading;
 
@@ -744,14 +744,14 @@ export default function MembersPage() {
                     <TableCell className="text-right font-mono">Rs. {(memberBalances.get(member.id)?.loanBalance || 0).toLocaleString('en-IN')}</TableCell>
                      <TableCell className="text-right">
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0" disabled={isUpdatingStatus && selectedMember?.id === member.id}>
+                        <DropdownMenuTrigger asChild disabled={member.status === 'closed'}>
+                           <Button variant="ghost" className="h-8 w-8 p-0" disabled={isUpdatingStatus && selectedMember?.id === member.id}>
                             {(isUpdatingStatus && selectedMember?.id === member.id) ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
                             <span className="sr-only">Open menu</span>
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                           <DropdownMenuItem onClick={() => handleEdit(member)} disabled={member.status === 'closed'}>
+                           <DropdownMenuItem onClick={() => handleEdit(member)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             <span>Edit</span>
                           </DropdownMenuItem>
@@ -761,27 +761,43 @@ export default function MembersPage() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           {member.status === 'active' ? (
-                            <DropdownMenuItem onClick={() => handleStatusChange(member, 'inactive')} disabled={member.status === 'closed'}>
+                            <DropdownMenuItem onClick={() => handleStatusChange(member, 'inactive')}>
                                 <UserX className="mr-2 h-4 w-4" />
                                 <span>Deactivate</span>
                             </DropdownMenuItem>
                           ) : member.status === 'inactive' ? (
-                            <DropdownMenuItem onClick={() => handleStatusChange(member, 'active')} disabled={member.status === 'closed'}>
+                            <DropdownMenuItem onClick={() => handleStatusChange(member, 'active')}>
                                 <UserCheck className="mr-2 h-4 w-4" />
                                 <span>Activate</span>
                             </DropdownMenuItem>
                           ) : null}
-                          <DropdownMenuItem onClick={() => handleCloseAccount(member)} disabled={member.status === 'closed'}>
+                          <DropdownMenuItem onClick={() => handleCloseAccount(member)}>
                             <Archive className="mr-2 h-4 w-4" />
                             <span>Close Account</span>
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleDelete(member)} className="text-destructive focus:bg-destructive/10 focus:text-destructive" disabled={member.status === 'closed'}>
+                          <DropdownMenuItem onClick={() => handleDelete(member)} className="text-destructive focus:bg-destructive/10 focus:text-destructive">
                             <Trash2 className="mr-2 h-4 w-4" />
                             <span>Delete</span>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
+                       {member.status === 'closed' && (
+                         <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                                <span className="sr-only">Open menu</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                               <DropdownMenuItem onClick={() => handlePassbook(member)}>
+                                <BookUser className="mr-2 h-4 w-4" />
+                                <span>Passbook</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                       )}
                     </TableCell>                  
                   </TableRow>
                 ))
@@ -820,7 +836,7 @@ export default function MembersPage() {
             <AlertDialogHeader>
                 <AlertDialogTitle>Are you sure you want to close this account?</AlertDialogTitle>
                 <AlertDialogDescription>
-                    This will permanently close the account for <span className="font-bold">{selectedMember?.name}</span>. The member's financial history will be preserved, but they cannot be reactivated. Ensure all loans are cleared before proceeding.
+                    This will permanently close the account for <span className="font-bold">{selectedMember?.name}</span>. The member's financial history will be preserved, but they cannot be reactivated.
                 </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -854,5 +870,3 @@ export default function MembersPage() {
     </div>
   );
 }
-
-    
