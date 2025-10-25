@@ -443,7 +443,7 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
                                 <CardContent className="p-3">
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <p className="font-semibold">Loan on {getTransactionDate(loan).toLocaleDateString()}</p>
+                                            <p className="font-semibold">Loan #{loan.loanId} on {getTransactionDate(loan).toLocaleDateString()}</p>
                                             <p className="text-muted-foreground">Amount: Rs. {loan.amount.toLocaleString('en-IN')} @ {loan.interestRate}%</p>
                                         </div>
                                         {loan.isClosed ? (

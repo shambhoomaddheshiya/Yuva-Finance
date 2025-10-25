@@ -238,7 +238,11 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         }
         
         if (values.type === 'loan') {
-            newTxData.loanId = newTxRef.id;
+            const allLoanTransactions = allTransactions?.filter(tx => tx.type === 'loan') || [];
+            const newLoanNumber = allLoanTransactions.length + 1;
+            const newLoanId = String(newLoanNumber).padStart(3, '0');
+
+            newTxData.loanId = newLoanId;
             newTxData.status = 'active';
             newTxData.interestRate = values.interestRate || 0;
         }
@@ -246,13 +250,18 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         await setDoc(newTxRef, newTxData);
 
         if (values.type === 'repayment' && values.loanId) {
-            const loanRef = doc(firestore, `users/${user.uid}/transactions`, values.loanId);
-            const loanDoc = await getDoc(loanRef);
+            const loanQuery = query(
+                collection(firestore, `users/${user.uid}/transactions`),
+                where('type', '==', 'loan'),
+                where('loanId', '==', values.loanId)
+            );
+            const loanSnapshot = await getDocs(loanQuery);
 
-            if(loanDoc.exists()){
+            if(!loanSnapshot.empty){
+                const loanDoc = loanSnapshot.docs[0];
                 const loanData = loanDoc.data() as Transaction;
                 const loanAmount = loanData.amount;
-
+                
                 const repaymentsQuery = query(
                     collection(firestore, `users/${user.uid}/transactions`),
                     where('type', '==', 'repayment'),
@@ -265,7 +274,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                 });
                 
                 if (totalPrincipalPaid >= loanAmount) {
-                    await updateDoc(loanRef, { status: 'closed' });
+                    await updateDoc(loanDoc.ref, { status: 'closed' });
                 }
             }
         }
@@ -365,8 +374,8 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                             <SelectContent>
                             {activeLoans.length > 0 ? (
                                 activeLoans.map((loan) => (
-                                <SelectItem key={loan.id} value={loan.id}>
-                                    {`Loan of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
+                                <SelectItem key={loan.id} value={loan.loanId!}>
+                                    {`Loan #${loan.loanId} of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
                                 </SelectItem>
                                 ))
                             ) : (
