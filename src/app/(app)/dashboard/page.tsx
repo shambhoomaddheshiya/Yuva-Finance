@@ -129,8 +129,12 @@ export default function DashboardPage() {
       .filter(t => t.type === 'expense' || t.type === 'loan-waived')
       .reduce((sum, t) => sum + t.amount, 0);
 
+    const totalLoanWaivedValue = contributingTransactions
+      .filter(t => t.type === 'loan-waived')
+      .reduce((sum, t) => sum + t.amount, 0);
+
     const totalDepositsValue = (memberDeposits + totalInterestValue) - totalExpenses;
-    const outstandingLoanValue = totalLoanValue - totalRepaymentValue;
+    const outstandingLoanValue = totalLoanValue - totalRepaymentValue - totalLoanWaivedValue;
     const remainingFundValue = (memberDeposits + totalInterestValue + totalRepaymentValue) - totalLoanValue;
     
     return { 
@@ -308,7 +312,7 @@ export default function DashboardPage() {
             description="Pending loan recovery"
         />
         <div className="lg:col-span-2">
-          <Card className="col-span-4 lg:col-span-3">
+          <Card className="col-span-2 lg:col-span-2">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <CardTitle className="font-headline text-lg">Monthly Overview</CardTitle>
@@ -355,6 +359,8 @@ export default function DashboardPage() {
       </div>
     </div>
   );
+
+    
 
     
 
