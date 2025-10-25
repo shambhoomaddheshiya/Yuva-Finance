@@ -551,15 +551,6 @@ export default function MembersPage() {
   }
 
   const handleCloseAccount = (member: Member) => {
-    const balances = memberBalances.get(member.id);
-    if ((balances?.loanBalance || 0) > 0) {
-        toast({
-            variant: 'destructive',
-            title: 'Account Closure Not Allowed',
-            description: `${member.name} has an outstanding loan balance. Please clear all loans before closing the account.`,
-        });
-        return;
-    }
     setSelectedMember(member);
     setIsCloseAccountDialogOpen(true);
   }
@@ -743,46 +734,47 @@ export default function MembersPage() {
                     <TableCell className="font-mono">Rs. {(memberBalances.get(member.id)?.depositBalance || 0).toLocaleString('en-IN')}</TableCell>
                     <TableCell className="text-right font-mono">Rs. {(memberBalances.get(member.id)?.loanBalance || 0).toLocaleString('en-IN')}</TableCell>
                      <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild disabled={member.status === 'closed'}>
-                           <Button variant="ghost" className="h-8 w-8 p-0" disabled={isUpdatingStatus && selectedMember?.id === member.id}>
-                            {(isUpdatingStatus && selectedMember?.id === member.id) ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
-                            <span className="sr-only">Open menu</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                           <DropdownMenuItem onClick={() => handleEdit(member)}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            <span>Edit</span>
-                          </DropdownMenuItem>
-                           <DropdownMenuItem onClick={() => handlePassbook(member)}>
-                            <BookUser className="mr-2 h-4 w-4" />
-                            <span>Passbook</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          {member.status === 'active' ? (
-                            <DropdownMenuItem onClick={() => handleStatusChange(member, 'inactive')}>
-                                <UserX className="mr-2 h-4 w-4" />
-                                <span>Deactivate</span>
+                      {member.status !== 'closed' ? (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0" disabled={isUpdatingStatus && selectedMember?.id === member.id}>
+                                {(isUpdatingStatus && selectedMember?.id === member.id) ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                                <span className="sr-only">Open menu</span>
+                            </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleEdit(member)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                <span>Edit</span>
                             </DropdownMenuItem>
-                          ) : member.status === 'inactive' ? (
-                            <DropdownMenuItem onClick={() => handleStatusChange(member, 'active')}>
-                                <UserCheck className="mr-2 h-4 w-4" />
-                                <span>Activate</span>
+                            <DropdownMenuItem onClick={() => handlePassbook(member)}>
+                                <BookUser className="mr-2 h-4 w-4" />
+                                <span>Passbook</span>
                             </DropdownMenuItem>
-                          ) : null}
-                          <DropdownMenuItem onClick={() => handleCloseAccount(member)}>
-                            <Archive className="mr-2 h-4 w-4" />
-                            <span>Close Account</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleDelete(member)} className="text-destructive focus:bg-destructive/10 focus:text-destructive">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            <span>Delete</span>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                       {member.status === 'closed' && (
+                            <DropdownMenuSeparator />
+                            {member.status === 'active' ? (
+                                <DropdownMenuItem onClick={() => handleStatusChange(member, 'inactive')}>
+                                    <UserX className="mr-2 h-4 w-4" />
+                                    <span>Deactivate</span>
+                                </DropdownMenuItem>
+                            ) : member.status === 'inactive' ? (
+                                <DropdownMenuItem onClick={() => handleStatusChange(member, 'active')}>
+                                    <UserCheck className="mr-2 h-4 w-4" />
+                                    <span>Activate</span>
+                                </DropdownMenuItem>
+                            ) : null}
+                            <DropdownMenuItem onClick={() => handleCloseAccount(member)}>
+                                <Archive className="mr-2 h-4 w-4" />
+                                <span>Close Account</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleDelete(member)} className="text-destructive focus:bg-destructive/10 focus:text-destructive">
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Delete</span>
+                            </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                       ) : (
                          <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" className="h-8 w-8 p-0">
@@ -841,7 +833,7 @@ export default function MembersPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={() => handleStatusChange(selectedMember!, 'closed')} disabled={isUpdatingStatus}>
+                <AlertDialogAction onClick={() => selectedMember && handleStatusChange(selectedMember, 'closed')} disabled={isUpdatingStatus}>
                     {isUpdatingStatus && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Yes, close account
                 </AlertDialogAction>
