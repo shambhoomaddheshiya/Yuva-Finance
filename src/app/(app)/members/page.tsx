@@ -528,11 +528,11 @@ export default function MembersPage() {
 
   const handleCloseAccount = (member: Member) => {
     const balances = memberBalances.get(member.id);
-    if ((balances?.loanBalance || 0) > 0 || (balances?.depositBalance || 0) > 0) {
+    if ((balances?.loanBalance || 0) > 0) {
         toast({
             variant: 'destructive',
             title: 'Account Closure Not Allowed',
-            description: `${member.name} has an outstanding balance. Please clear all loans and deposits before closing the account.`,
+            description: `${member.name} has an outstanding loan balance. Please clear all loans before closing the account.`,
         });
         return;
     }
