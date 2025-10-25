@@ -386,9 +386,9 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
             </FormItem>
           )}
         />
-        <DialogFooter className="!mt-8 p-0">
-            <div className="flex flex-col w-full">
-                <Button type="submit" disabled={isLoading} className="w-full rounded-b-none h-12 text-lg">
+        <DialogFooter className="!mt-8 p-0 sm:justify-center">
+            <div className="flex flex-col w-full max-w-sm mx-auto">
+                <Button type="submit" disabled={isLoading} className="h-12 text-lg rounded-b-none bg-primary hover:bg-primary/90 text-primary-foreground">
                     {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Record Transaction'}
                 </Button>
                 {selectedMemberId && (
@@ -855,26 +855,27 @@ export default function TransactionsPage() {
     if (!transactions || !members) {
       return initialValues;
     }
-    const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
-    const activeTransactions = transactions.filter(t => activeMemberIds.has(t.memberId));
+    
+    const contributingMemberIds = new Set(members.filter(m => m.status === 'active' || m.status === 'closed').map(m => m.id));
+    const contributingTransactions = transactions.filter(t => contributingMemberIds.has(t.memberId));
 
-    const memberDeposits = activeTransactions
+    const memberDeposits = contributingTransactions
       .filter(t => t.type === 'deposit')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalInterest = activeTransactions
+    const totalInterest = contributingTransactions
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.interest || 0), 0);
     
-    const totalLoan = activeTransactions
+    const totalLoan = contributingTransactions
       .filter(t => t.type === 'loan')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalRepaymentPrincipal = activeTransactions
+    const totalRepaymentPrincipal = contributingTransactions
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.principal || 0), 0);
 
-    const totalExpenses = activeTransactions
+    const totalExpenses = contributingTransactions
       .filter(t => t.type === 'expense' || t.type === 'loan-waived')
       .reduce((sum, t) => sum + t.amount, 0);
 

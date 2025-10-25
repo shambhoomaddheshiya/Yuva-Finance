@@ -120,10 +120,10 @@ export default function SummaryPage() {
     const year = parseInt(selectedYear);
     const month = parseInt(selectedMonth);
 
-    const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
+    const contributingMemberIds = new Set(members.filter(m => m.status === 'active' || m.status === 'closed').map(m => m.id));
     const filteredTransactions = transactions.filter(tx => {
       const txDate = getTransactionDate(tx);
-      return txDate.getFullYear() === year && txDate.getMonth() === month && activeMemberIds.has(tx.memberId);
+      return txDate.getFullYear() === year && txDate.getMonth() === month && contributingMemberIds.has(tx.memberId);
     });
     
     const memberMap = new Map(members.map(m => [m.id, m.name]));

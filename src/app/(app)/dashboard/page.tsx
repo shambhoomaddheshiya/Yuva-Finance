@@ -5,7 +5,7 @@ import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GroupSettings, Member, Transaction } from '@/types';
-import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins, LibraryBig, UserCheck, UserX, Scale, CalendarClock, ShieldX } from 'lucide-react';
+import { Banknote, Users, Percent, PiggyBank, ArrowDown, ArrowUp, Landmark, HandCoins, LibraryBig, UserCheck, UserX, Scale, CalendarClock, ShieldX, UserMinus } from 'lucide-react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -89,14 +89,15 @@ export default function DashboardPage() {
   };
 
 
-  const { totalMembers, activeMembersCount, inactiveMembersCount } = useMemo(() => {
+  const { totalMembers, activeMembersCount, inactiveMembersCount, closedMembersCount } = useMemo(() => {
     if (!members) {
-        return { totalMembers: 0, activeMembersCount: 0, inactiveMembersCount: 0 };
+        return { totalMembers: 0, activeMembersCount: 0, inactiveMembersCount: 0, closedMembersCount: 0 };
     }
     const total = members.length;
     const active = members.filter(m => m.status === 'active').length;
-    const inactive = total - active;
-    return { totalMembers: total, activeMembersCount: active, inactiveMembersCount: inactive };
+    const inactive = members.filter(m => m.status === 'inactive').length;
+    const closed = members.filter(m => m.status === 'closed').length;
+    return { totalMembers: total, activeMembersCount: active, inactiveMembersCount: inactive, closedMembersCount: closed };
   }, [members]);
 
   const { totalDeposits, totalLoan, totalRepayment, totalInterest, remainingFund, outstandingLoan } = useMemo(() => {
@@ -104,26 +105,27 @@ export default function DashboardPage() {
       return { totalDeposits: 0, totalLoan: 0, totalRepayment: 0, totalInterest: 0, remainingFund: 0, outstandingLoan: 0 };
     }
     
-    const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
-    const activeTransactions = transactions.filter(t => activeMemberIds.has(t.memberId));
+    // Financial calculations should include active and closed members to preserve history
+    const contributingMemberIds = new Set(members.filter(m => m.status === 'active' || m.status === 'closed').map(m => m.id));
+    const contributingTransactions = transactions.filter(t => contributingMemberIds.has(t.memberId));
 
-    const memberDeposits = activeTransactions
+    const memberDeposits = contributingTransactions
       .filter(t => t.type === 'deposit')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalLoanValue = activeTransactions
+    const totalLoanValue = contributingTransactions
       .filter(t => t.type === 'loan')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalRepaymentValue = activeTransactions
+    const totalRepaymentValue = contributingTransactions
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.principal || 0), 0);
     
-    const totalInterestValue = activeTransactions
+    const totalInterestValue = contributingTransactions
       .filter(t => t.type === 'repayment')
       .reduce((sum, t) => sum + (t.interest || 0), 0);
     
-    const totalExpenses = activeTransactions
+    const totalExpenses = contributingTransactions
       .filter(t => t.type === 'expense' || t.type === 'loan-waived')
       .reduce((sum, t) => sum + t.amount, 0);
 
@@ -160,10 +162,10 @@ export default function DashboardPage() {
     const monthStart = startOfMonth(latestTransactionDate);
     const monthEnd = endOfMonth(latestTransactionDate);
 
-    const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
+    const contributingMemberIds = new Set(members.filter(m => m.status === 'active' || m.status === 'closed').map(m => m.id));
     const monthlyTransactions = transactions.filter(tx => {
         const txDate = getTransactionDate(tx);
-        return txDate >= monthStart && txDate <= monthEnd && activeMemberIds.has(tx.memberId);
+        return txDate >= monthStart && txDate <= monthEnd && contributingMemberIds.has(tx.memberId);
     });
     
     const monthlyDeposits = monthlyTransactions.filter(t => t.type === 'deposit').reduce((sum, t) => sum + t.amount, 0);
@@ -241,14 +243,14 @@ export default function DashboardPage() {
           value={loading ? '...' : `Rs. ${totalDeposits.toLocaleString('en-IN')}`}
           icon={PiggyBank}
           loading={loading}
-          description="From active members"
+          description="From active & closed members"
         />
         <StatCard
           title="Total Loan Disbursed"
           value={loading ? '...' : `Rs. ${totalLoan.toLocaleString('en-IN')}`}
           icon={Landmark}
           loading={loading}
-          description="To active members"
+          description="To active & closed members"
         />
          <StatCard
           title="Total Interest Earned"
@@ -281,17 +283,21 @@ export default function DashboardPage() {
                 <Skeleton className="h-8 w-3/4" />
                 ) : (
                 <div className="flex items-center text-lg font-bold font-headline gap-x-4">
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1" title="Active">
                         <UserCheck className="h-5 w-5 text-green-500"/>
                         <span>{activeMembersCount}</span>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1" title="Inactive">
                          <UserX className="h-5 w-5 text-red-500"/>
                         <span>{inactiveMembersCount}</span>
                     </div>
+                    <div className="flex items-center gap-1" title="Closed">
+                         <UserMinus className="h-5 w-5 text-gray-500"/>
+                        <span>{closedMembersCount}</span>
+                    </div>
                 </div>
                 )}
-                 <p className="text-xs text-muted-foreground">Active vs. Inactive</p>
+                 <p className="text-xs text-muted-foreground">Active / Inactive / Closed</p>
             </CardContent>
         </Card>
         <Card>

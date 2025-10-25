@@ -5,7 +5,7 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX, HandCoins, Percent, ShieldX } from 'lucide-react';
+import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX, HandCoins, Percent, ShieldX, Archive } from 'lucide-react';
 import { format, getYear } from 'date-fns';
 import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
@@ -300,10 +300,14 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             return { sortedTransactions: [], depositBalance: 0, loanBalance: 0, interestShare: 0, grandTotal: 0 };
         }
         
-        const activeMembersCount = allMembers.filter(m => m.status === 'active').length;
+        // Active members for interest calculation now includes 'closed' members who were previously active
+        const membersForInterestCalc = allMembers.filter(m => m.status === 'active' || m.status === 'closed');
+        const contributingMembersCount = membersForInterestCalc.length;
+
+        const allContributingMemberIds = new Set(membersForInterestCalc.map(m => m.id));
 
         const totalInterest = transactions
-            .filter(t => t.type === 'repayment')
+            .filter(t => t.type === 'repayment' && allContributingMemberIds.has(t.memberId))
             .reduce((sum, t) => sum + (t.interest || 0), 0);
 
         const memberTransactions = transactions.filter(t => t.memberId === member.id);
@@ -326,7 +330,9 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             .reduce((sum, t) => sum + t.amount, 0);
 
         const calculatedLoanBalance = loanTotal - repaymentTotal - loanWaivedTotal;
-        const calculatedInterestShare = activeMembersCount > 0 ? totalInterest / activeMembersCount : 0;
+        
+        // Only give interest share if the member is 'active' or 'closed'. 'inactive' members don't get a share.
+        const calculatedInterestShare = member.status !== 'inactive' && contributingMembersCount > 0 ? totalInterest / contributingMembersCount : 0;
         const calculatedGrandTotal = depositTotal + calculatedInterestShare;
 
         return { 
@@ -336,7 +342,7 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             interestShare: calculatedInterestShare,
             grandTotal: calculatedGrandTotal
         };
-    }, [transactions, member.id, allMembers]);
+    }, [transactions, member, allMembers]);
     
     const getTxTypeClass = (type: Transaction['type']) => {
         switch (type) {
@@ -467,6 +473,7 @@ export default function MembersPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isPassbookOpen, setIsPassbookOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isCloseAccountDialogOpen, setIsCloseAccountDialogOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | undefined>(undefined);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -519,6 +526,20 @@ export default function MembersPage() {
     setIsPassbookOpen(true);
   }
 
+  const handleCloseAccount = (member: Member) => {
+    const balances = memberBalances.get(member.id);
+    if ((balances?.loanBalance || 0) > 0 || (balances?.depositBalance || 0) > 0) {
+        toast({
+            variant: 'destructive',
+            title: 'Account Closure Not Allowed',
+            description: `${member.name} has an outstanding balance. Please clear all loans and deposits before closing the account.`,
+        });
+        return;
+    }
+    setSelectedMember(member);
+    setIsCloseAccountDialogOpen(true);
+  }
+
   const handleDelete = (member: Member) => {
     const balances = memberBalances.get(member.id);
     if ((balances?.loanBalance || 0) > 0) {
@@ -533,7 +554,7 @@ export default function MembersPage() {
     setIsDeleteDialogOpen(true);
   }
   
-  const handleStatusChange = async (member: Member, newStatus: 'active' | 'inactive') => {
+  const handleStatusChange = async (member: Member, newStatus: 'active' | 'inactive' | 'closed') => {
     if (!user || !firestore) return;
 
     setIsUpdatingStatus(true);
@@ -544,7 +565,7 @@ export default function MembersPage() {
         await updateDoc(memberDocRef, { status: newStatus });
         toast({
             title: 'Status Updated',
-            description: `${member.name} is now ${newStatus}.`,
+            description: `${member.name}'s account is now ${newStatus}.`,
         });
 
     } catch (error: any) {
@@ -555,6 +576,10 @@ export default function MembersPage() {
         });
     } finally {
         setIsUpdatingStatus(false);
+        if (newStatus === 'closed') {
+            setIsCloseAccountDialogOpen(false);
+            setSelectedMember(undefined);
+        }
     }
   }
 
@@ -602,6 +627,19 @@ export default function MembersPage() {
     return initials.toUpperCase();
   }
   
+  const getStatusBadge = (status: Member['status']) => {
+    switch (status) {
+        case 'active':
+            return <Badge variant="secondary" className='w-fit bg-green-100 text-green-800'>Active</Badge>;
+        case 'inactive':
+            return <Badge variant="secondary" className='w-fit bg-red-100 text-red-800'>Inactive</Badge>;
+        case 'closed':
+             return <Badge variant="secondary" className='w-fit bg-gray-100 text-gray-800'>Closed</Badge>;
+        default:
+            return null;
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -664,7 +702,7 @@ export default function MembersPage() {
                 ))
               ) : filteredMembers && filteredMembers.length > 0 ? (
                 filteredMembers.map((member) => (
-                  <TableRow key={member.id} className={cn(member.status === 'inactive' && 'bg-muted/50 text-muted-foreground')}>
+                  <TableRow key={member.id} className={cn((member.status === 'inactive' || member.status === 'closed') && 'bg-muted/50 text-muted-foreground')}>
                     <TableCell className="font-medium">
                         <div className="flex items-center gap-3">
                             <Avatar>
@@ -672,11 +710,7 @@ export default function MembersPage() {
                             </Avatar>
                             <div className="flex flex-col">
                                 <span>{member.name}</span>
-                                {member.status === 'active' ? (
-                                    <Badge variant="secondary" className='w-fit bg-green-100 text-green-800'>Active</Badge>
-                                ) : (
-                                    <Badge variant="secondary" className='w-fit bg-red-100 text-red-800'>Inactive</Badge>
-                                )}
+                                {getStatusBadge(member.status)}
                             </div>
                         </div>
                     </TableCell>
@@ -687,8 +721,8 @@ export default function MembersPage() {
                      <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0" disabled={isUpdatingStatus && selectedMember?.id === member.id}>
-                            {isUpdatingStatus && selectedMember?.id === member.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                          <Button variant="ghost" className="h-8 w-8 p-0" disabled={(isUpdatingStatus && selectedMember?.id === member.id) || member.status === 'closed'}>
+                            {(isUpdatingStatus && selectedMember?.id === member.id) ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
                             <span className="sr-only">Open menu</span>
                           </Button>
                         </DropdownMenuTrigger>
@@ -713,6 +747,10 @@ export default function MembersPage() {
                                 <span>Activate</span>
                             </DropdownMenuItem>
                           )}
+                          <DropdownMenuItem onClick={() => handleCloseAccount(member)}>
+                            <Archive className="mr-2 h-4 w-4" />
+                            <span>Close Account</span>
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => handleDelete(member)} className="text-destructive focus:bg-destructive/10 focus:text-destructive">
                             <Trash2 className="mr-2 h-4 w-4" />
@@ -752,6 +790,24 @@ export default function MembersPage() {
             {selectedMember && memberList && <PassbookView member={selectedMember} allMembers={memberList} transactions={transactionList} />}
         </DialogContent>
       </Dialog>
+
+       <AlertDialog open={isCloseAccountDialogOpen} onOpenChange={setIsCloseAccountDialogOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Are you sure you want to close this account?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    This will permanently close the account for <span className="font-bold">{selectedMember?.name}</span>. The member's financial history will be preserved, but they cannot be reactivated. Ensure all balances are zero before proceeding.
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => handleStatusChange(selectedMember!, 'closed')} disabled={isUpdatingStatus}>
+                    {isUpdatingStatus && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Yes, close account
+                </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>

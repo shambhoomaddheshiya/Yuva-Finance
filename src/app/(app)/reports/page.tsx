@@ -100,7 +100,7 @@ export default function ReportsPage() {
             const allTransactionsSnapshot = await getDocs(allTransactionsQuery);
             let allTransactions = allTransactionsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction));
             
-            const activeMemberIds = new Set(members.filter(m => m.status === 'active').map(m => m.id));
+            const contributingMemberIds = new Set(members.filter(m => m.status === 'active' || m.status === 'closed').map(m => m.id));
             
             if (exportScope === 'member' && memberId) {
                 memberName = members.find(m => m.id === memberId)?.name;
@@ -130,7 +130,7 @@ export default function ReportsPage() {
             if (exportScope === 'member' && memberId) {
                 transactionsForReport = transactionsForReport.filter(tx => tx.memberId === memberId);
             } else if (exportScope === 'all') {
-                transactionsForReport = transactionsForReport.filter(tx => activeMemberIds.has(tx.memberId));
+                transactionsForReport = transactionsForReport.filter(tx => contributingMemberIds.has(tx.memberId));
             }
 
 
@@ -278,7 +278,7 @@ export default function ReportsPage() {
                                             >
                                                 <FormItem className="flex items-center space-x-3 space-y-0">
                                                     <FormControl><RadioGroupItem value="all" /></FormControl>
-                                                    <FormLabel className="font-normal">All Active Members</FormLabel>
+                                                    <FormLabel className="font-normal">All Contributing Members</FormLabel>
                                                 </FormItem>
                                                 <FormItem className="flex items-center space-x-3 space-y-0">
                                                     <FormControl><RadioGroupItem value="member" /></FormControl>

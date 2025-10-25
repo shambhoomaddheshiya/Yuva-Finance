@@ -7,7 +7,7 @@ export type Member = {
   phone: string;
   aadhaar: string;
   joinDate: string;
-  status: 'active' | 'inactive';
+  status: 'active' | 'inactive' | 'closed';
 };
 
 export type Transaction = {

@@ -121,7 +121,7 @@ export default function BulkDepositPage() {
             <CardHeader>
               <CardTitle>Record Group Deposit</CardTitle>
               <CardDescription>
-                Enter an amount and select members to record a deposit for multiple people at once.
+                Enter an amount and select members to record a deposit for multiple people at once. Only active members are shown.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
