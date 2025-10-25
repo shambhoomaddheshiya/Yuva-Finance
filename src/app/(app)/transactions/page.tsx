@@ -91,6 +91,7 @@ const transactionObjectSchema = z.object({
   description: z.string().optional(),
   principal: z.coerce.number().optional(),
   interest: z.coerce.number().optional(),
+  interestRate: z.coerce.number().optional(),
 });
 
 const transactionSchema = transactionObjectSchema.refine(data => {
@@ -144,6 +145,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
       amount: 0,
       principal: 0,
       interest: 0,
+      interestRate: 0,
       description: '',
       date: new Date(),
       type: 'deposit'
@@ -195,6 +197,8 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
     setIsLoading(true);
     
+    const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
+
     const newTxData: Omit<Transaction, 'id'> = {
         memberId: values.memberId,
         type: values.type,
@@ -208,9 +212,13 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         newTxData.interest = values.interest || 0;
     }
     
-    const transactionsCollectionRef = collection(firestore, `users/${user.uid}/transactions`);
-
-    addDoc(transactionsCollectionRef, newTxData).then(() => {
+    if (values.type === 'loan') {
+        newTxData.loanId = newTxRef.id;
+        newTxData.status = 'active';
+        newTxData.interestRate = values.interestRate || 0;
+    }
+    
+    setDoc(newTxRef, newTxData).then(() => {
         toast({
             title: 'Success!',
             description: 'New transaction has been recorded.',
@@ -320,6 +328,31 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                         <FormLabel>Total Amount Repaid</FormLabel>
                         <FormControl><Input type="number" {...field} readOnly className="bg-muted" /></FormControl>
                         <FormMessage />
+                        </FormItem>
+                    )}
+                />
+            </div>
+        ) : transactionType === 'loan' ? (
+             <div className="grid grid-cols-2 gap-4">
+                 <FormField
+                    control={form.control}
+                    name="amount"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Loan Amount</FormLabel>
+                        <FormControl><Input type="number" placeholder="50000" {...field} /></FormControl>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                <FormField
+                    control={form.control}
+                    name="interestRate"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Interest Rate (%)</FormLabel>
+                            <FormControl><Input type="number" placeholder="2" {...field} /></FormControl>
+                            <FormMessage />
                         </FormItem>
                     )}
                 />
@@ -435,6 +468,7 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
   }
 
   const isRepayment = transaction.type === 'repayment';
+  const isLoan = transaction.type === 'loan';
 
   const form = useForm<z.infer<typeof editTransactionObjectSchema>>({
     resolver: zodResolver(isRepayment ? editTransactionSchema : editTransactionObjectSchema),
@@ -444,6 +478,7 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
       amount: transaction.amount,
       principal: transaction.principal || 0,
       interest: transaction.interest || 0,
+      interestRate: transaction.interestRate || 0,
       type: transaction.type,
     },
   });
@@ -475,6 +510,11 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
             updatedTxData.principal = values.principal || 0;
             updatedTxData.interest = values.interest || 0;
         }
+
+        if (transaction.type === 'loan') {
+            updatedTxData.interestRate = values.interestRate || 0;
+        }
+
 
         await updateDoc(txRef, updatedTxData);
 
@@ -530,6 +570,31 @@ function EditTransactionForm({ onOpenChange, transaction }: { onOpenChange: (ope
                         <FormLabel>Total Amount Repaid</FormLabel>
                         <FormControl><Input type="number" {...field} readOnly className="bg-muted" /></FormControl>
                         <FormMessage />
+                        </FormItem>
+                    )}
+                />
+            </div>
+        ) : isLoan ? (
+             <div className="grid grid-cols-2 gap-4">
+                 <FormField
+                    control={form.control}
+                    name="amount"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Loan Amount</FormLabel>
+                        <FormControl><Input type="number" placeholder="50000" {...field} /></FormControl>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                <FormField
+                    control={form.control}
+                    name="interestRate"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Interest Rate (%)</FormLabel>
+                            <FormControl><Input type="number" placeholder="2" {...field} /></FormControl>
+                            <FormMessage />
                         </FormItem>
                     )}
                 />
@@ -1084,7 +1149,16 @@ export default function TransactionsPage() {
                       </div>
                     </TableCell>
                     <TableCell>{getTransactionDate(tx).toLocaleDateString()}</TableCell>
-                    <TableCell>{tx.description}</TableCell>
+                    <TableCell>
+                      {tx.type === 'loan' ? (
+                        <div className="flex flex-col">
+                            <span className="text-xs text-muted-foreground truncate">ID: {tx.loanId}</span>
+                            <span>Rate: {tx.interestRate}% | Status: <span className={cn('font-semibold', tx.status === 'active' ? 'text-green-600' : 'text-gray-500')}>{tx.status}</span></span>
+                        </div>
+                      ) : (
+                        tx.description
+                      )}
+                    </TableCell>
                     <TableCell className={`text-right font-mono font-semibold ${getTxAmountClass(tx.type)}`}>
                       {getTxAmountPrefix(tx.type)}Rs. {tx.amount.toLocaleString('en-IN')}
                     </TableCell>

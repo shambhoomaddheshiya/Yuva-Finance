@@ -19,6 +19,9 @@ export type Transaction = {
   description?: string;
   principal?: number; // For repayments, the principal amount
   interest?: number; // For repayments, the interest amount
+  interestRate?: number; // For loans, the interest rate
+  loanId?: string; // Unique ID for the loan transaction itself
+  status?: 'active' | 'closed'; // Status of the loan
 };
 
 export type GroupSettings = {
