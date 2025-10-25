@@ -727,7 +727,7 @@ export default function MembersPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleEdit(member)}>
+                           <DropdownMenuItem onClick={() => handleEdit(member)} disabled={member.status === 'closed'}>
                             <Pencil className="mr-2 h-4 w-4" />
                             <span>Edit</span>
                           </DropdownMenuItem>
@@ -737,22 +737,22 @@ export default function MembersPage() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           {member.status === 'active' ? (
-                            <DropdownMenuItem onClick={() => handleStatusChange(member, 'inactive')}>
+                            <DropdownMenuItem onClick={() => handleStatusChange(member, 'inactive')} disabled={member.status === 'closed'}>
                                 <UserX className="mr-2 h-4 w-4" />
                                 <span>Deactivate</span>
                             </DropdownMenuItem>
                           ) : (
-                            <DropdownMenuItem onClick={() => handleStatusChange(member, 'active')}>
+                            <DropdownMenuItem onClick={() => handleStatusChange(member, 'active')} disabled={member.status === 'closed'}>
                                 <UserCheck className="mr-2 h-4 w-4" />
                                 <span>Activate</span>
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem onClick={() => handleCloseAccount(member)}>
+                          <DropdownMenuItem onClick={() => handleCloseAccount(member)} disabled={member.status === 'closed'}>
                             <Archive className="mr-2 h-4 w-4" />
                             <span>Close Account</span>
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleDelete(member)} className="text-destructive focus:bg-destructive/10 focus:text-destructive">
+                          <DropdownMenuItem onClick={() => handleDelete(member)} className="text-destructive focus:bg-destructive/10 focus:text-destructive" disabled={member.status === 'closed'}>
                             <Trash2 className="mr-2 h-4 w-4" />
                             <span>Delete</span>
                           </DropdownMenuItem>
@@ -796,7 +796,7 @@ export default function MembersPage() {
             <AlertDialogHeader>
                 <AlertDialogTitle>Are you sure you want to close this account?</AlertDialogTitle>
                 <AlertDialogDescription>
-                    This will permanently close the account for <span className="font-bold">{selectedMember?.name}</span>. The member's financial history will be preserved, but they cannot be reactivated. Ensure all balances are zero before proceeding.
+                    This will permanently close the account for <span className="font-bold">{selectedMember?.name}</span>. The member's financial history will be preserved, but they cannot be reactivated. Ensure all loans are cleared before proceeding.
                 </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -830,3 +830,5 @@ export default function MembersPage() {
     </div>
   );
 }
+
+    
