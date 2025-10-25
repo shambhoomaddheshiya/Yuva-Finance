@@ -300,75 +300,60 @@ export default function DashboardPage() {
                  <p className="text-xs text-muted-foreground">Active / Inactive / Closed</p>
             </CardContent>
         </Card>
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Loan Recovery</CardTitle>
-                <Scale className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-                {loading ? (
-                <Skeleton className="h-8 w-3/4" />
-                ) : (
-                <div className="text-2xl font-bold font-headline">Rs. {outstandingLoan.toLocaleString('en-IN')}</div>
-                )}
-                 <p className="text-xs text-muted-foreground">Outstanding loan balance</p>
-            </CardContent>
-        </Card>
         <StatCard
             title="Outstanding Loan"
             value={loading ? '...' : `Rs. ${outstandingLoan.toLocaleString('en-IN')}`}
             icon={Scale}
             loading={loading}
             description="Pending loan recovery"
-          />
-      </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        
-        <Card className="col-span-4 lg:col-span-7">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-                <CardTitle className="font-headline text-lg">Monthly Overview</CardTitle>
-                <CalendarClock className="h-5 w-5 text-muted-foreground"/>
-            </div>
-            <p className="text-sm text-muted-foreground pt-1">
-               {loading ? 'Loading...' : `Summary for ${format(monthlyOverview.displayMonth, 'MMMM yyyy')}`}
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {loading ? (
-                <div className="space-y-2">
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-full" />
+        />
+        <div className="lg:col-span-4">
+          <Card className="col-span-4 lg:col-span-3">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                    <CardTitle className="font-headline text-lg">Monthly Overview</CardTitle>
+                    <CalendarClock className="h-5 w-5 text-muted-foreground"/>
                 </div>
-            ) : (
-                <div className="space-y-1">
-                    <MonthlyOverviewStat 
-                        title="Total Amount Deposits" 
-                        value={`Rs. ${monthlyOverview.monthlyDeposits.toLocaleString('en-IN')}`}
-                        loading={loading}
-                    />
-                    <MonthlyOverviewStat 
-                        title="Amount Given as Loan" 
-                        value={`Rs. ${monthlyOverview.monthlyLoan.toLocaleString('en-IN')}`}
-                        loading={loading}
-                    />
-                    <MonthlyOverviewStat 
-                        title="Interest Received" 
-                        value={`Rs. ${monthlyOverview.monthlyInterest.toLocaleString('en-IN')}`}
-                        loading={loading}
-                    />
-                    <MonthlyOverviewStat 
-                        title="Principal Recovered" 
-                        value={`Rs. ${monthlyOverview.monthlyPrincipal.toLocaleString('en-IN')}`}
-                        loading={loading}
-                    />
-                </div>
-            )}
-          </CardContent>
-        </Card>
+                <p className="text-sm text-muted-foreground pt-1">
+                  {loading ? 'Loading...' : `Summary for ${format(monthlyOverview.displayMonth, 'MMMM yyyy')}`}
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {loading ? (
+                    <div className="space-y-2">
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-full" />
+                    </div>
+                ) : (
+                    <div className="space-y-1">
+                        <MonthlyOverviewStat 
+                            title="Total Amount Deposits" 
+                            value={`Rs. ${monthlyOverview.monthlyDeposits.toLocaleString('en-IN')}`}
+                            loading={loading}
+                        />
+                        <MonthlyOverviewStat 
+                            title="Amount Given as Loan" 
+                            value={`Rs. ${monthlyOverview.monthlyLoan.toLocaleString('en-IN')}`}
+                            loading={loading}
+                        />
+                        <MonthlyOverviewStat 
+                            title="Interest Received" 
+                            value={`Rs. ${monthlyOverview.monthlyInterest.toLocaleString('en-IN')}`}
+                            loading={loading}
+                        />
+                        <MonthlyOverviewStat 
+                            title="Principal Recovered" 
+                            value={`Rs. ${monthlyOverview.monthlyPrincipal.toLocaleString('en-IN')}`}
+                            loading={loading}
+                        />
+                    </div>
+                )}
+              </CardContent>
+          </Card>
+        </div>
       </div>
-       
     </div>
   );
-}
+
+    
