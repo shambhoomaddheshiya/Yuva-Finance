@@ -307,7 +307,7 @@ export default function DashboardPage() {
             loading={loading}
             description="Pending loan recovery"
         />
-        <div className="lg:col-span-4">
+        <div className="lg:col-span-2">
           <Card className="col-span-4 lg:col-span-3">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
@@ -355,5 +355,7 @@ export default function DashboardPage() {
       </div>
     </div>
   );
+
+    
 
     
