@@ -92,19 +92,30 @@ const transactionObjectSchema = z.object({
   principal: z.coerce.number().optional(),
   interest: z.coerce.number().optional(),
   interestRate: z.coerce.number().optional(),
+  loanId: z.string().optional(), // For repayments
 });
 
-const transactionSchema = transactionObjectSchema.refine(data => {
+const transactionSchema = transactionObjectSchema.superRefine((data, ctx) => {
     if (data.type === 'repayment') {
+        if (!data.loanId) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Please select which loan to repay.',
+                path: ['loanId'],
+            });
+        }
         const principal = data.principal || 0;
         const interest = data.interest || 0;
-        return principal + interest === data.amount;
+        if (principal + interest !== data.amount) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Principal + Interest must equal the Total Amount.",
+                path: ["amount"],
+            });
+        }
     }
-    return true;
-}, {
-    message: "For repayments, Principal + Interest must equal the Total Amount.",
-    path: ["amount"],
 });
+
 
 // For the edit form - editing is complex so we'll simplify it
 const editTransactionObjectSchema = transactionObjectSchema.omit({ memberId: true });
@@ -128,6 +139,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [activeLoans, setActiveLoans] = useState<Transaction[]>([]);
   const { user } = useUser();
   const firestore = useFirestore();
 
@@ -148,7 +160,8 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
       interestRate: 0,
       description: '',
       date: new Date(),
-      type: 'deposit'
+      type: 'deposit',
+      loanId: '',
     },
   });
 
@@ -163,6 +176,17 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
     }
   }, [principal, interest, transactionType, form]);
 
+  useEffect(() => {
+    if (selectedMemberId && allTransactions) {
+      const loans = allTransactions.filter(
+        tx => tx.type === 'loan' && tx.memberId === selectedMemberId && tx.status === 'active'
+      );
+      setActiveLoans(loans);
+    } else {
+      setActiveLoans([]);
+    }
+    form.setValue('loanId', ''); // Reset loan selection when member changes
+  }, [selectedMemberId, allTransactions, form]);
 
   const handleMemberChange = (memberId: string) => {
     setSelectedMemberId(memberId);
@@ -194,46 +218,74 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
   async function onSubmit(values: z.infer<typeof transactionSchema>) {
     if (!user || !firestore) return;
-
     setIsLoading(true);
-    
-    const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
 
-    const newTxData: Omit<Transaction, 'id'> = {
-        memberId: values.memberId,
-        type: values.type,
-        amount: values.amount,
-        date: Timestamp.fromDate(values.date),
-        description: values.description,
-    };
-    
-    if (values.type === 'repayment') {
-        newTxData.principal = values.principal || 0;
-        newTxData.interest = values.interest || 0;
-    }
-    
-    if (values.type === 'loan') {
-        newTxData.loanId = newTxRef.id;
-        newTxData.status = 'active';
-        newTxData.interestRate = values.interestRate || 0;
-    }
-    
-    setDoc(newTxRef, newTxData).then(() => {
+    try {
+        const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
+
+        const newTxData: Omit<Transaction, 'id'> = {
+            memberId: values.memberId,
+            type: values.type,
+            amount: values.amount,
+            date: Timestamp.fromDate(values.date),
+            description: values.description,
+        };
+        
+        if (values.type === 'repayment') {
+            newTxData.principal = values.principal || 0;
+            newTxData.interest = values.interest || 0;
+            newTxData.loanId = values.loanId;
+        }
+        
+        if (values.type === 'loan') {
+            newTxData.loanId = newTxRef.id;
+            newTxData.status = 'active';
+            newTxData.interestRate = values.interestRate || 0;
+        }
+        
+        await setDoc(newTxRef, newTxData);
+
+        if (values.type === 'repayment' && values.loanId) {
+            const loanRef = doc(firestore, `users/${user.uid}/transactions`, values.loanId);
+            const loanDoc = await getDoc(loanRef);
+
+            if(loanDoc.exists()){
+                const loanData = loanDoc.data() as Transaction;
+                const loanAmount = loanData.amount;
+
+                const repaymentsQuery = query(
+                    collection(firestore, `users/${user.uid}/transactions`),
+                    where('type', '==', 'repayment'),
+                    where('loanId', '==', values.loanId)
+                );
+                const repaymentsSnapshot = await getDocs(repaymentsQuery);
+                let totalPrincipalPaid = 0;
+                repaymentsSnapshot.forEach(doc => {
+                    totalPrincipalPaid += doc.data().principal || 0;
+                });
+                
+                if (totalPrincipalPaid >= loanAmount) {
+                    await updateDoc(loanRef, { status: 'closed' });
+                }
+            }
+        }
+
         toast({
             title: 'Success!',
             description: 'New transaction has been recorded.',
         });
         form.reset();
         onOpenChange(false);
-    }).catch(error => {
+    } catch(error: any) {
+        console.error("Transaction submission failed:", error);
         toast({
             variant: 'destructive',
             title: 'Uh oh! Something went wrong.',
             description: error.message || 'There was a problem with your request.',
         });
-    }).finally(() => {
+    } finally {
         setIsLoading(false);
-    });
+    }
 }
 
 
@@ -297,41 +349,73 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
           )}
         />
         {transactionType === 'repayment' ? (
-            <div className="grid grid-cols-2 gap-4">
+            <>
                 <FormField
                     control={form.control}
-                    name="principal"
+                    name="loanId"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Principal Amount</FormLabel>
-                            <FormControl><Input type="number" placeholder="10000" {...field} /></FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-                <FormField
-                    control={form.control}
-                    name="interest"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Interest Paid</FormLabel>
-                            <FormControl><Input type="number" placeholder="200" {...field} /></FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-                 <FormField
-                    control={form.control}
-                    name="amount"
-                    render={({ field }) => (
-                        <FormItem className="col-span-2">
-                        <FormLabel>Total Amount Repaid</FormLabel>
-                        <FormControl><Input type="number" {...field} readOnly className="bg-muted" /></FormControl>
+                        <FormLabel>Select Loan to Repay</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select an active loan" />
+                            </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                            {activeLoans.length > 0 ? (
+                                activeLoans.map((loan) => (
+                                <SelectItem key={loan.id} value={loan.id}>
+                                    {`Loan of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
+                                </SelectItem>
+                                ))
+                            ) : (
+                                <SelectItem value="no-loans" disabled>
+                                No active loans for this member.
+                                </SelectItem>
+                            )}
+                            </SelectContent>
+                        </Select>
                         <FormMessage />
                         </FormItem>
                     )}
                 />
-            </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                        control={form.control}
+                        name="principal"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Principal Amount</FormLabel>
+                                <FormControl><Input type="number" placeholder="10000" {...field} value={field.value || ''} /></FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="interest"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Interest Paid</FormLabel>
+                                <FormControl><Input type="number" placeholder="200" {...field} value={field.value || ''}/></FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="amount"
+                        render={({ field }) => (
+                            <FormItem className="col-span-2">
+                            <FormLabel>Total Amount Repaid</FormLabel>
+                            <FormControl><Input type="number" {...field} readOnly className="bg-muted" /></FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                </div>
+            </>
         ) : transactionType === 'loan' ? (
              <div className="grid grid-cols-2 gap-4">
                  <FormField
@@ -351,7 +435,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                     render={({ field }) => (
                         <FormItem>
                             <FormLabel>Interest Rate (%)</FormLabel>
-                            <FormControl><Input type="number" placeholder="2" {...field} /></FormControl>
+                            <FormControl><Input type="number" placeholder="2" {...field} value={field.value || ''}/></FormControl>
                             <FormMessage />
                         </FormItem>
                     )}
@@ -1230,3 +1314,5 @@ export default function TransactionsPage() {
     </div>
   );
 }
+
+    
