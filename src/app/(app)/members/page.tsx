@@ -5,7 +5,7 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX, HandCoins, Percent, ShieldX, Archive } from 'lucide-react';
+import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX, HandCoins, Percent, ShieldX, Archive, Landmark } from 'lucide-react';
 import { format, getYear, endOfMonth } from 'date-fns';
 import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
@@ -295,9 +295,15 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
         return new Date(tx.date as string);
     };
   
-    const { sortedTransactions, depositBalance, loanBalance, interestShare, grandTotal } = useMemo(() => {
+    const { 
+        sortedTransactions, 
+        depositBalance, 
+        interestShare, 
+        grandTotal,
+        loanHistory 
+    } = useMemo(() => {
         if (!transactions || !allMembers) {
-            return { sortedTransactions: [], depositBalance: 0, loanBalance: 0, interestShare: 0, grandTotal: 0 };
+            return { sortedTransactions: [], depositBalance: 0, loanBalance: 0, interestShare: 0, grandTotal: 0, loanHistory: [] };
         }
         
         const memberTransactions = transactions.filter(t => t.memberId === member.id);
@@ -323,7 +329,6 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             const historicalContributingMembers = allMembers.filter(m => {
                 const joinDate = new Date(m.joinDate);
                 const isActiveOrClosed = m.status === 'active' || m.status === 'closed';
-                // Member was part of the group before or during the cutoff month
                 return joinDate <= cutoffDate && (isActiveOrClosed || (m.id === member.id));
             });
             const historicalContributingMemberIds = new Set(historicalContributingMembers.map(m => m.id));
@@ -344,30 +349,33 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             .filter(t => t.type === 'deposit')
             .reduce((sum, t) => sum + t.amount, 0);
 
-        const loanTotal = sorted
-            .filter(t => t.type === 'loan')
-            .reduce((sum, t) => sum + t.amount, 0);
-        
-        const repaymentTotal = sorted
-            .filter(t => t.type === 'repayment')
-            .reduce((sum, t) => sum + (t.principal || 0), 0);
+        const memberLoans = memberTransactions.filter(t => t.type === 'loan');
+        const calculatedLoanHistory = memberLoans.map(loan => {
+            const repayments = memberTransactions.filter(t => t.type === 'repayment' && t.loanId === loan.loanId);
+            const waived = memberTransactions.find(t => t.type === 'loan-waived' && t.loanId === loan.loanId);
+            const totalPrincipalRepaid = repayments.reduce((sum, t) => sum + (t.principal || 0), 0);
+            const totalWaived = waived ? waived.amount : 0;
+            const outstandingBalance = loan.amount - totalPrincipalRepaid - totalWaived;
+            return {
+                ...loan,
+                outstandingBalance,
+                isClosed: outstandingBalance <= 0 || loan.status === 'closed',
+            };
+        });
 
-        const loanWaivedTotal = sorted
-            .filter(t => t.type === 'loan-waived')
-            .reduce((sum, t) => sum + t.amount, 0);
-
-        const calculatedLoanBalance = loanTotal - repaymentTotal - loanWaivedTotal;
         const calculatedGrandTotal = depositTotal + calculatedInterestShare;
 
         return { 
             sortedTransactions: sorted, 
             depositBalance: depositTotal, 
-            loanBalance: calculatedLoanBalance,
             interestShare: calculatedInterestShare,
-            grandTotal: calculatedGrandTotal
+            grandTotal: calculatedGrandTotal,
+            loanHistory: calculatedLoanHistory
         };
     }, [transactions, member, allMembers]);
     
+    const totalLoanBalance = loanHistory.reduce((sum, loan) => sum + loan.outstandingBalance, 0);
+
     const getTxTypeClass = (type: Transaction['type']) => {
         switch (type) {
             case 'deposit': return 'border-transparent bg-green-100 text-green-800';
@@ -418,10 +426,51 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
                     <p><span className="font-semibold">Mob No:</span> {member.phone}</p>
                     <p><span className="font-semibold">Aadhaar:</span> {formatAadhaar(member.aadhaar)}</p>
                     <p><span className="font-semibold">Joined:</span> {new Date(member.joinDate).toLocaleDateString()}</p>
-                    <p className="font-medium"><span className="font-semibold">Loan Balance:</span> Rs. {loanBalance.toLocaleString('en-IN')}</p>
+                    <p className="font-medium col-span-2"><span className="font-semibold">Total Outstanding Loan:</span> Rs. {totalLoanBalance.toLocaleString('en-IN')}</p>
                 </div>
             </div>
+             <div className="p-4 bg-slate-50 border-b">
+                 <h3 className="text-md font-semibold mb-2 font-headline flex items-center gap-2"><Landmark className="h-5 w-5" />Loan History</h3>
+                 {isLoading ? (
+                     <div className="space-y-2">
+                        {[...Array(2)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
+                     </div>
+                 ) : loanHistory.length > 0 ? (
+                     <ScrollArea className="h-40">
+                         <div className="space-y-3 p-1">
+                         {loanHistory.map(loan => (
+                            <Card key={loan.id} className="text-xs">
+                                <CardContent className="p-3">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p className="font-semibold">Loan on {getTransactionDate(loan).toLocaleDateString()}</p>
+                                            <p className="text-muted-foreground">Amount: Rs. {loan.amount.toLocaleString('en-IN')} @ {loan.interestRate}%</p>
+                                        </div>
+                                        {loan.isClosed ? (
+                                            <Badge variant="secondary" className='bg-green-100 text-green-800'>Closed</Badge>
+                                        ) : (
+                                            <Badge variant="secondary" className='bg-yellow-100 text-yellow-800'>Active</Badge>
+                                        )}
+                                    </div>
+                                    <Separator className="my-2" />
+                                    <div className="flex justify-between">
+                                        <p className="font-medium">Outstanding:</p>
+                                        <p className="font-bold">Rs. {loan.outstandingBalance.toLocaleString('en-IN')}</p>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                         ))}
+                         </div>
+                     </ScrollArea>
+                 ) : (
+                    <div className="flex items-center justify-center h-20 w-full border-2 border-dashed rounded-md">
+                        <p className="text-muted-foreground text-sm">No loan history for this member.</p>
+                    </div>
+                 )}
+            </div>
+
             <div className="flex-1 overflow-y-auto">
+                <h3 className="text-md font-semibold font-headline p-4 pb-0">Transaction Ledger</h3>
                 {isLoading ? (
                      <div className="p-6 space-y-2">
                         {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
@@ -465,12 +514,12 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
                         <span className="font-medium">Rs. {depositBalance.toLocaleString('en-IN')}</span>
                     </div>
                     <div className="flex justify-between">
-                        <span className="text-muted-foreground">Interest Earned</span>
+                        <span className="text-muted-foreground">Interest Share Earned</span>
                         <span className="font-medium">Rs. {interestShare.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <Separator className="my-2" />
                     <div className="flex justify-between font-bold text-base">
-                        <span>Grand Total (Deposits + Interest)</span>
+                        <span>Settlement Amount</span>
                         <span>Rs. {grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                  </div>
@@ -862,3 +911,5 @@ export default function MembersPage() {
     </div>
   );
 }
+
+    
