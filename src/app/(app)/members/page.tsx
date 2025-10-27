@@ -489,9 +489,16 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
                                 <TableRow key={tx.id}>
                                     <TableCell>{getTransactionDate(tx).toLocaleDateString()}</TableCell>
                                     <TableCell className='capitalize'>
-                                        <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${getTxTypeClass(tx.type)}`}>
-                                            {getTxTypeIcon(tx.type)}
-                                            {tx.type.replace('-', ' ')}
+                                        <div className="flex items-center gap-2">
+                                            <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${getTxTypeClass(tx.type)}`}>
+                                                {getTxTypeIcon(tx.type)}
+                                                {tx.type.replace('-', ' ')}
+                                            </div>
+                                            {tx.type === 'loan' && (
+                                                <Badge variant={tx.status === 'active' ? 'default' : 'secondary'} className={cn(tx.status === 'active' && 'bg-green-100 text-green-800')}>
+                                                    {tx.status}
+                                                </Badge>
+                                            )}
                                         </div>
                                     </TableCell>
                                     <TableCell className={`text-right font-medium ${getTxAmountClass(tx.type)}`}>
@@ -911,5 +918,3 @@ export default function MembersPage() {
     </div>
   );
 }
-
-    
