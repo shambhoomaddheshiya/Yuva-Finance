@@ -146,6 +146,11 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
   const membersRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/members`), where('status', '==', 'active')) : null, [user, firestore]);
   const { data: members, isLoading: membersLoading } = useCollection<Member>(membersRef);
 
+  const sortedMembers = useMemo(() => {
+    if (!members) return [];
+    return [...members].sort((a, b) => a.name.localeCompare(b.name));
+  }, [members]);
+
   const allTransactionsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
   const { data: allTransactions } = useCollection<Transaction>(allTransactionsRef);
 
@@ -318,7 +323,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {members?.map((m) => (
+                  {sortedMembers?.map((m) => (
                     <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -1362,5 +1367,7 @@ export default function TransactionsPage() {
     </div>
   );
 }
+
+    
 
     
