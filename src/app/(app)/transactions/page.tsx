@@ -225,116 +225,84 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
     if (!user || !firestore) return;
     setIsLoading(true);
 
-    try {
-        if (values.type === 'loan') {
-            await runTransaction(firestore, async (transaction) => {
-                const settingsDocRef = doc(firestore, `users/${user.uid}/groupSettings`, "settings");
-                const settingsDoc = await transaction.get(settingsDocRef);
+    const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
+    let newTxData: Omit<Transaction, 'id'>;
 
-                if (!settingsDoc.exists()) {
-                    throw new Error("Group settings not found. Please configure settings first.");
-                }
+    if (values.type === 'loan') {
+        const newLoanId = newTxRef.id;
+        newTxData = {
+            memberId: values.memberId,
+            type: 'loan',
+            amount: values.amount,
+            date: Timestamp.fromDate(values.date),
+            description: values.description,
+            interestRate: values.interestRate || 0,
+            loanId: newLoanId,
+            status: 'active',
+        };
+    } else {
+        newTxData = {
+            memberId: values.memberId,
+            type: values.type,
+            amount: values.amount,
+            date: Timestamp.fromDate(values.date),
+            description: values.description,
+        };
+        if (values.type === 'repayment') {
+            newTxData.principal = values.principal || 0;
+            newTxData.interest = values.interest || 0;
+            newTxData.loanId = values.loanId;
+        }
+    }
 
-                const lastLoanId = settingsDoc.data().lastLoanId || 0;
-                const newLoanId = lastLoanId + 1;
-                
-                const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
-                
-                const newLoanData: Omit<Transaction, 'id'> = {
-                    memberId: values.memberId,
-                    type: 'loan',
-                    amount: values.amount,
-                    date: Timestamp.fromDate(values.date),
-                    description: values.description,
-                    interestRate: values.interestRate || 0,
-                    loanId: String(newLoanId),
-                    status: 'active',
-                };
-                
-                transaction.set(newTxRef, newLoanData);
-                transaction.update(settingsDocRef, { lastLoanId: newLoanId });
-            });
-        } else {
-            const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
-            const newTxData: Omit<Transaction, 'id'> = {
-              memberId: values.memberId,
-              type: values.type,
-              amount: values.amount,
-              date: Timestamp.fromDate(values.date),
-              description: values.description,
-            };
-
-            if (values.type === 'repayment') {
-                newTxData.principal = values.principal || 0;
-                newTxData.interest = values.interest || 0;
-                newTxData.loanId = values.loanId;
-            }
-            
-            await setDoc(newTxRef, newTxData);
-
-            if (values.type === 'repayment' && values.loanId) {
-              const loanQuery = query(
+    setDoc(newTxRef, newTxData).then(async () => {
+        if (values.type === 'repayment' && values.loanId) {
+            const loanQuery = query(
                 collection(firestore, `users/${user.uid}/transactions`),
                 where('loanId', '==', values.loanId),
                 where('type', '==', 'loan')
-              );
-              const loanSnapshot = await getDocs(loanQuery);
-
-              if (!loanSnapshot.empty) {
+            );
+            const loanSnapshot = await getDocs(loanQuery);
+            if (!loanSnapshot.empty) {
                 const loanDoc = loanSnapshot.docs[0];
                 const loanData = loanDoc.data() as Transaction;
                 const loanAmount = loanData.amount;
                 
                 const repaymentsQuery = query(
-                  collection(firestore, `users/${user.uid}/transactions`),
-                  where('type', '==', 'repayment'),
-                  where('loanId', '==', values.loanId)
+                    collection(firestore, `users/${user.uid}/transactions`),
+                    where('type', '==', 'repayment'),
+                    where('loanId', '==', values.loanId)
                 );
                 const repaymentsSnapshot = await getDocs(repaymentsQuery);
                 let totalPrincipalPaid = 0;
                 repaymentsSnapshot.forEach(doc => {
-                  totalPrincipalPaid += doc.data().principal || 0;
+                    totalPrincipalPaid += doc.data().principal || 0;
                 });
 
                 if (totalPrincipalPaid >= loanAmount) {
-                  await updateDoc(loanDoc.ref, { status: 'closed' });
+                    await updateDoc(loanDoc.ref, { status: 'closed' });
                 }
-              }
             }
         }
-
+        
         toast({
             title: 'Success!',
             description: 'New transaction has been recorded.',
         });
         form.reset();
         onOpenChange(false);
-    } catch (error: any) {
-        console.error("Transaction submission failed:", error);
-        
-        // This is a generic way to handle errors from runTransaction or other Firestore ops
-        const isPermissionError = error.code === 'permission-denied';
-        
-        if(isPermissionError) {
-             errorEmitter.emit(
-                'permission-error',
-                new FirestorePermissionError({
-                    path: `users/${user.uid}/transactions or users/${user.uid}/groupSettings/settings`,
-                    operation: 'write',
-                    requestResourceData: values,
-                })
-            );
-        } else {
-            toast({
-                variant: 'destructive',
-                title: 'Uh oh! Something went wrong.',
-                description: error.message || 'There was a problem with your request.',
-            });
-        }
 
-    } finally {
+    }).catch(error => {
+        const permissionError = new FirestorePermissionError({
+            path: newTxRef.path,
+            operation: 'create',
+            requestResourceData: newTxData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+
+    }).finally(() => {
         setIsLoading(false);
-    }
+    });
   }
 
 
@@ -1402,5 +1370,6 @@ export default function TransactionsPage() {
     
 
     
+
 
 
