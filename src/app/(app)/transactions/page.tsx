@@ -6,7 +6,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2, HandCoins, Banknote, PiggyBank, Landmark, ShieldX } from 'lucide-react';
-import { collection, doc, getDoc, query, writeBatch, where, getDocs, deleteDoc, Timestamp, updateDoc, increment, setDoc, addDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, query, writeBatch, where, getDocs, deleteDoc, Timestamp, updateDoc, increment, setDoc, addDoc, runTransaction } from 'firebase/firestore';
 import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -226,77 +226,99 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
     setIsLoading(true);
 
     try {
-        const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
+      if (values.type === 'loan') {
+        await runTransaction(firestore, async (transaction) => {
+          const settingsRef = doc(firestore, `users/${user.uid}/groupSettings/settings`);
+          const settingsDoc = await transaction.get(settingsRef);
 
-        const newTxData: Omit<Transaction, 'id'> = {
+          if (!settingsDoc.exists()) {
+            throw new Error("Group settings not found. Cannot generate loan ID.");
+          }
+
+          const lastLoanId = settingsDoc.data().lastLoanId || 0;
+          const newLoanId = lastLoanId + 1;
+
+          const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
+          const newLoanData: Omit<Transaction, 'id'> = {
             memberId: values.memberId,
-            type: values.type,
+            type: 'loan',
             amount: values.amount,
             date: Timestamp.fromDate(values.date),
             description: values.description,
+            interestRate: values.interestRate || 0,
+            loanId: String(newLoanId),
+            status: 'active',
+          };
+          transaction.set(newTxRef, newLoanData);
+          transaction.update(settingsRef, { lastLoanId: newLoanId });
+        });
+      } else {
+        // Handle other transaction types (deposit, repayment, etc.)
+        const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
+        const newTxData: Omit<Transaction, 'id'> = {
+          memberId: values.memberId,
+          type: values.type,
+          amount: values.amount,
+          date: Timestamp.fromDate(values.date),
+          description: values.description,
         };
-        
+
         if (values.type === 'repayment') {
-            newTxData.principal = values.principal || 0;
-            newTxData.interest = values.interest || 0;
-            newTxData.loanId = values.loanId;
+          newTxData.principal = values.principal || 0;
+          newTxData.interest = values.interest || 0;
+          newTxData.loanId = values.loanId;
         }
-        
-        if (values.type === 'loan') {
-            newTxData.loanId = newTxRef.id;
-            newTxData.status = 'active';
-            newTxData.interestRate = values.interestRate || 0;
-        }
-        
         await setDoc(newTxRef, newTxData);
-
+        
+        // If it's a repayment, check if the corresponding loan should be closed
         if (values.type === 'repayment' && values.loanId) {
-             const loanQuery = query(
-                collection(firestore, `users/${user.uid}/transactions`),
-                where('loanId', '==', values.loanId),
-                where('type', '==', 'loan')
+          const loanQuery = query(
+            collection(firestore, `users/${user.uid}/transactions`),
+            where('loanId', '==', values.loanId),
+            where('type', '==', 'loan')
+          );
+          const loanSnapshot = await getDocs(loanQuery);
+
+          if (!loanSnapshot.empty) {
+            const loanDoc = loanSnapshot.docs[0];
+            const loanData = loanDoc.data() as Transaction;
+            const loanAmount = loanData.amount;
+            
+            const repaymentsQuery = query(
+              collection(firestore, `users/${user.uid}/transactions`),
+              where('type', '==', 'repayment'),
+              where('loanId', '==', values.loanId)
             );
-            const loanSnapshot = await getDocs(loanQuery);
+            const repaymentsSnapshot = await getDocs(repaymentsQuery);
+            let totalPrincipalPaid = 0;
+            repaymentsSnapshot.forEach(doc => {
+              totalPrincipalPaid += doc.data().principal || 0;
+            });
 
-            if(!loanSnapshot.empty){
-                const loanDoc = loanSnapshot.docs[0];
-                const loanData = loanDoc.data() as Transaction;
-                const loanAmount = loanData.amount;
-                
-                const repaymentsQuery = query(
-                    collection(firestore, `users/${user.uid}/transactions`),
-                    where('type', '==', 'repayment'),
-                    where('loanId', '==', values.loanId)
-                );
-                const repaymentsSnapshot = await getDocs(repaymentsQuery);
-                let totalPrincipalPaid = 0;
-                repaymentsSnapshot.forEach(doc => {
-                    totalPrincipalPaid += doc.data().principal || 0;
-                });
-                
-                if (totalPrincipalPaid >= loanAmount) {
-                    await updateDoc(loanDoc.ref, { status: 'closed' });
-                }
+            if (totalPrincipalPaid >= loanAmount) {
+              await updateDoc(loanDoc.ref, { status: 'closed' });
             }
+          }
         }
+      }
 
-        toast({
-            title: 'Success!',
-            description: 'New transaction has been recorded.',
-        });
-        form.reset();
-        onOpenChange(false);
-    } catch(error: any) {
-        console.error("Transaction submission failed:", error);
-        toast({
-            variant: 'destructive',
-            title: 'Uh oh! Something went wrong.',
-            description: error.message || 'There was a problem with your request.',
-        });
+      toast({
+        title: 'Success!',
+        description: 'New transaction has been recorded.',
+      });
+      form.reset();
+      onOpenChange(false);
+    } catch (error: any) {
+      console.error("Transaction submission failed:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Uh oh! Something went wrong.',
+        description: error.message || 'There was a problem with your request.',
+      });
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
-}
+  }
 
 
   return (
@@ -376,7 +398,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                             {activeLoans.length > 0 ? (
                                 activeLoans.map((loan) => (
                                 <SelectItem key={loan.id} value={loan.loanId!}>
-                                    {`Loan of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
+                                    {`Loan #${loan.loanId} of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
                                 </SelectItem>
                                 ))
                             ) : (
@@ -1363,3 +1385,4 @@ export default function TransactionsPage() {
     
 
     
+

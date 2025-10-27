@@ -29,4 +29,5 @@ export type GroupSettings = {
   monthlyContribution: number;
   interestRate: number;
   establishedDate: string;
+  lastLoanId: number;
 };

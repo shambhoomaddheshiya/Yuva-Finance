@@ -75,6 +75,7 @@ export default function LoginPage() {
         monthlyContribution: 1000,
         interestRate: 2,
         establishedDate: new Date().toISOString(),
+        lastLoanId: 0,
       };
       await setDoc(settingsRef, defaultSettings, { merge: true });
     }

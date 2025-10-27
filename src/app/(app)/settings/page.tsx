@@ -61,7 +61,7 @@ export default function SettingsPage() {
     if (!user || !firestore || !settingsRef) return;
     setIsSubmitting(true);
     try {
-      // Create the settings document if it doesn't exist, otherwise merge
+      // Create or merge settings. `lastLoanId` is preserved if it exists.
       await setDoc(settingsRef, {
           groupName: values.groupName,
           monthlyContribution: values.monthlyContribution,
