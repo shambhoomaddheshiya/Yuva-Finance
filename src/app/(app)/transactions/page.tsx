@@ -229,7 +229,6 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
     let newTxData: Omit<Transaction, 'id'>;
 
     if (values.type === 'loan') {
-        const newLoanId = newTxRef.id;
         newTxData = {
             memberId: values.memberId,
             type: 'loan',
@@ -237,7 +236,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
             date: Timestamp.fromDate(values.date),
             description: values.description,
             interestRate: values.interestRate || 0,
-            loanId: newLoanId,
+            loanId: newTxRef.id, // Use the document's own ID as the loan ID
             status: 'active',
         };
     } else {
@@ -257,17 +256,20 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
     setDoc(newTxRef, newTxData).then(async () => {
         if (values.type === 'repayment' && values.loanId) {
+            // After a successful repayment, check if the corresponding loan is now fully paid.
             const loanQuery = query(
                 collection(firestore, `users/${user.uid}/transactions`),
                 where('loanId', '==', values.loanId),
                 where('type', '==', 'loan')
             );
             const loanSnapshot = await getDocs(loanQuery);
+            
             if (!loanSnapshot.empty) {
                 const loanDoc = loanSnapshot.docs[0];
                 const loanData = loanDoc.data() as Transaction;
                 const loanAmount = loanData.amount;
                 
+                // Get all repayments for this loan to calculate the total paid principal
                 const repaymentsQuery = query(
                     collection(firestore, `users/${user.uid}/transactions`),
                     where('type', '==', 'repayment'),
@@ -279,6 +281,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                     totalPrincipalPaid += doc.data().principal || 0;
                 });
 
+                // If total principal paid meets or exceeds the loan amount, close the loan
                 if (totalPrincipalPaid >= loanAmount) {
                     await updateDoc(loanDoc.ref, { status: 'closed' });
                 }
@@ -293,6 +296,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         onOpenChange(false);
 
     }).catch(error => {
+        // Emit a detailed, contextual error for permission issues
         const permissionError = new FirestorePermissionError({
             path: newTxRef.path,
             operation: 'create',
@@ -1370,6 +1374,7 @@ export default function TransactionsPage() {
     
 
     
+
 
 
 
