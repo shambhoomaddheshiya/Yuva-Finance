@@ -225,65 +225,62 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
     if (!user || !firestore) return;
     setIsLoading(true);
 
-    const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
-    let newTxData: Omit<Transaction, 'id'>;
+    try {
+        if (values.type === 'loan') {
+            const newLoanRef = doc(collection(firestore, `users/${user.uid}/transactions`));
+            const newLoanData: Omit<Transaction, 'id'> = {
+                memberId: values.memberId,
+                type: 'loan',
+                amount: values.amount,
+                date: Timestamp.fromDate(values.date),
+                description: values.description,
+                interestRate: values.interestRate || 0,
+                loanId: newLoanRef.id,
+                status: 'active',
+            };
+            await setDoc(newLoanRef, newLoanData);
 
-    if (values.type === 'loan') {
-        newTxData = {
-            memberId: values.memberId,
-            type: 'loan',
-            amount: values.amount,
-            date: Timestamp.fromDate(values.date),
-            description: values.description,
-            interestRate: values.interestRate || 0,
-            loanId: newTxRef.id, // Use the document's own ID as the loan ID
-            status: 'active',
-        };
-    } else {
-        newTxData = {
-            memberId: values.memberId,
-            type: values.type,
-            amount: values.amount,
-            date: Timestamp.fromDate(values.date),
-            description: values.description,
-        };
-        if (values.type === 'repayment') {
-            newTxData.principal = values.principal || 0;
-            newTxData.interest = values.interest || 0;
-            newTxData.loanId = values.loanId;
-        }
-    }
+        } else {
+             const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
+             let newTxData: Omit<Transaction, 'id'> = {
+                memberId: values.memberId,
+                type: values.type,
+                amount: values.amount,
+                date: Timestamp.fromDate(values.date),
+                description: values.description,
+            };
 
-    setDoc(newTxRef, newTxData).then(async () => {
-        if (values.type === 'repayment' && values.loanId) {
-            // After a successful repayment, check if the corresponding loan is now fully paid.
-            const loanQuery = query(
-                collection(firestore, `users/${user.uid}/transactions`),
-                where('loanId', '==', values.loanId),
-                where('type', '==', 'loan')
-            );
-            const loanSnapshot = await getDocs(loanQuery);
-            
-            if (!loanSnapshot.empty) {
-                const loanDoc = loanSnapshot.docs[0];
-                const loanData = loanDoc.data() as Transaction;
-                const loanAmount = loanData.amount;
-                
-                // Get all repayments for this loan to calculate the total paid principal
-                const repaymentsQuery = query(
-                    collection(firestore, `users/${user.uid}/transactions`),
-                    where('type', '==', 'repayment'),
-                    where('loanId', '==', values.loanId)
-                );
-                const repaymentsSnapshot = await getDocs(repaymentsQuery);
-                let totalPrincipalPaid = 0;
-                repaymentsSnapshot.forEach(doc => {
-                    totalPrincipalPaid += doc.data().principal || 0;
-                });
+            if (values.type === 'repayment') {
+                newTxData.principal = values.principal || 0;
+                newTxData.interest = values.interest || 0;
+                newTxData.loanId = values.loanId;
+            }
 
-                // If total principal paid meets or exceeds the loan amount, close the loan
-                if (totalPrincipalPaid >= loanAmount) {
-                    await updateDoc(loanDoc.ref, { status: 'closed' });
+            await addDoc(collection(firestore, `users/${user.uid}/transactions`), newTxData);
+
+            if (values.type === 'repayment' && values.loanId) {
+                // After a successful repayment, check if the corresponding loan is now fully paid.
+                const loanDocRef = doc(firestore, `users/${user.uid}/transactions`, values.loanId);
+                const loanDoc = await getDoc(loanDocRef);
+
+                if (loanDoc.exists()) {
+                    const loanData = loanDoc.data() as Transaction;
+                    const loanAmount = loanData.amount;
+                    
+                    const repaymentsQuery = query(
+                        collection(firestore, `users/${user.uid}/transactions`),
+                        where('type', '==', 'repayment'),
+                        where('loanId', '==', values.loanId)
+                    );
+                    const repaymentsSnapshot = await getDocs(repaymentsQuery);
+                    let totalPrincipalPaid = repaymentsSnapshot.docs.reduce((sum, doc) => sum + (doc.data().principal || 0), 0);
+                    
+                    // Also add the current repayment's principal
+                    totalPrincipalPaid += values.principal || 0;
+
+                    if (totalPrincipalPaid >= loanAmount) {
+                        await updateDoc(loanDocRef, { status: 'closed' });
+                    }
                 }
             }
         }
@@ -294,19 +291,17 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         });
         form.reset();
         onOpenChange(false);
-
-    }).catch(error => {
-        // Emit a detailed, contextual error for permission issues
-        const permissionError = new FirestorePermissionError({
-            path: newTxRef.path,
-            operation: 'create',
-            requestResourceData: newTxData,
+    
+    } catch (error) {
+        console.error("Transaction submission failed:", error);
+        toast({
+            variant: 'destructive',
+            title: 'Uh oh! Something went wrong.',
+            description: 'There was a problem recording your transaction.',
         });
-        errorEmitter.emit('permission-error', permissionError);
-
-    }).finally(() => {
+    } finally {
         setIsLoading(false);
-    });
+    }
   }
 
 
@@ -387,7 +382,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                             {activeLoans.length > 0 ? (
                                 activeLoans.map((loan) => (
                                 <SelectItem key={loan.id} value={loan.loanId!}>
-                                    {`Loan #${loan.loanId} of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
+                                    {`Loan of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
                                 </SelectItem>
                                 ))
                             ) : (
@@ -965,6 +960,35 @@ export default function TransactionsPage() {
     }
   }
 
+  const memberLoanSequences = useMemo(() => {
+    const sequences = new Map<string, Map<string, number>>();
+    if (!transactions) return sequences;
+
+    const memberLoans = new Map<string, Transaction[]>();
+
+    transactions
+      .filter(tx => tx.type === 'loan')
+      .forEach(tx => {
+        if (!memberLoans.has(tx.memberId)) {
+          memberLoans.set(tx.memberId, []);
+        }
+        memberLoans.get(tx.memberId)!.push(tx);
+      });
+
+    memberLoans.forEach((loans, memberId) => {
+      const sortedLoans = loans.sort((a, b) => getTransactionDate(a).getTime() - getTransactionDate(b).getTime());
+      const loanSequence = new Map<string, number>();
+      sortedLoans.forEach((loan, index) => {
+        if (loan.loanId) {
+          loanSequence.set(loan.loanId, index + 1);
+        }
+      });
+      sequences.set(memberId, loanSequence);
+    });
+
+    return sequences;
+  }, [transactions]);
+
 
   const filteredTransactions = useMemo(() => {
     if (!transactions || !members) return [];
@@ -1292,7 +1316,9 @@ export default function TransactionsPage() {
                     <TableCell>
                       {tx.type === 'loan' ? (
                         <div className="flex flex-col">
-                            <span className="text-xs text-muted-foreground truncate">ID: {tx.loanId}</span>
+                            <span className="text-xs text-muted-foreground">
+                              Loan #{memberLoanSequences.get(tx.memberId)?.get(tx.loanId!)?.toString().padStart(3, '0')}
+                            </span>
                             <span>Rate: {tx.interestRate}% | Status: <span className={cn('font-semibold', tx.status === 'active' ? 'text-green-600' : 'text-gray-500')}>{tx.status}</span></span>
                         </div>
                       ) : (
@@ -1370,11 +1396,3 @@ export default function TransactionsPage() {
     </div>
   );
 }
-
-    
-
-    
-
-
-
-

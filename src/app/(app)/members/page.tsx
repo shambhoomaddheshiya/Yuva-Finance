@@ -300,10 +300,12 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
         depositBalance, 
         interestShare, 
         grandTotal,
-        loanHistory 
+        loanHistory,
+        memberLoanSequence,
     } = useMemo(() => {
+        const initialResult = { sortedTransactions: [], depositBalance: 0, loanBalance: 0, interestShare: 0, grandTotal: 0, loanHistory: [], memberLoanSequence: new Map<string, number>() };
         if (!transactions || !allMembers) {
-            return { sortedTransactions: [], depositBalance: 0, loanBalance: 0, interestShare: 0, grandTotal: 0, loanHistory: [] };
+            return initialResult;
         }
         
         const memberTransactions = transactions.filter(t => t.memberId === member.id);
@@ -349,7 +351,14 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             .filter(t => t.type === 'deposit')
             .reduce((sum, t) => sum + t.amount, 0);
 
-        const memberLoans = memberTransactions.filter(t => t.type === 'loan');
+        const memberLoans = memberTransactions.filter(t => t.type === 'loan').sort((a, b) => getTransactionDate(a).getTime() - getTransactionDate(b).getTime());
+        const sequenceMap = new Map<string, number>();
+        memberLoans.forEach((loan, index) => {
+          if (loan.loanId) {
+            sequenceMap.set(loan.loanId, index + 1);
+          }
+        });
+
         const calculatedLoanHistory = memberLoans.map(loan => {
             const repayments = memberTransactions.filter(t => t.type === 'repayment' && t.loanId === loan.loanId);
             const waived = memberTransactions.find(t => t.type === 'loan-waived' && t.loanId === loan.loanId);
@@ -370,7 +379,8 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             depositBalance: depositTotal, 
             interestShare: calculatedInterestShare,
             grandTotal: calculatedGrandTotal,
-            loanHistory: calculatedLoanHistory
+            loanHistory: calculatedLoanHistory,
+            memberLoanSequence: sequenceMap,
         };
     }, [transactions, member, allMembers]);
     
@@ -443,7 +453,7 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
                                 <CardContent className="p-3">
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <p className="font-semibold">Loan #{loan.loanId} on {getTransactionDate(loan).toLocaleDateString()}</p>
+                                            <p className="font-semibold">Loan #{memberLoanSequence.get(loan.loanId!)?.toString().padStart(3, '0')} on {getTransactionDate(loan).toLocaleDateString()}</p>
                                             <p className="text-muted-foreground">Amount: Rs. {loan.amount.toLocaleString('en-IN')} @ {loan.interestRate}%</p>
                                         </div>
                                         {loan.isClosed ? (
