@@ -238,8 +238,12 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         }
         
         if (values.type === 'loan') {
-            const allLoanTransactions = allTransactions?.filter(tx => tx.type === 'loan') || [];
-            const newLoanNumber = allLoanTransactions.length + 1;
+            const allLoanTransactionsQuery = query(
+                collection(firestore, `users/${user.uid}/transactions`), 
+                where('type', '==', 'loan')
+            );
+            const allLoanTransactionsSnapshot = await getDocs(allLoanTransactionsQuery);
+            const newLoanNumber = allLoanTransactionsSnapshot.size + 1;
             const newLoanId = String(newLoanNumber).padStart(3, '0');
 
             newTxData.loanId = newLoanId;
@@ -1078,9 +1082,44 @@ export default function TransactionsPage() {
     if (!selectedTransaction || !user || !firestore) return;
     setIsDeleting(true);
 
+    const txToDelete = selectedTransaction;
+
     try {
-        const txRef = doc(firestore, `users/${user.uid}/transactions`, selectedTransaction.id);
+        const txRef = doc(firestore, `users/${user.uid}/transactions`, txToDelete.id);
         await deleteDoc(txRef);
+        
+        // If the deleted transaction was a repayment, re-evaluate the loan status
+        if (txToDelete.type === 'repayment' && txToDelete.loanId) {
+            const loanQuery = query(
+                collection(firestore, `users/${user.uid}/transactions`),
+                where('type', '==', 'loan'),
+                where('loanId', '==', txToDelete.loanId)
+            );
+            const loanSnapshot = await getDocs(loanQuery);
+            if (!loanSnapshot.empty) {
+                const loanDoc = loanSnapshot.docs[0];
+                const loanData = loanDoc.data() as Transaction;
+                
+                // If loan was closed, check if it should be re-opened
+                if (loanData.status === 'closed') {
+                     const repaymentsQuery = query(
+                        collection(firestore, `users/${user.uid}/transactions`),
+                        where('type', '==', 'repayment'),
+                        where('loanId', '==', txToDelete.loanId)
+                    );
+                    const repaymentsSnapshot = await getDocs(repaymentsQuery);
+                    const totalPrincipalPaid = repaymentsSnapshot.docs.reduce((sum, doc) => sum + (doc.data().principal || 0), 0);
+
+                    if (totalPrincipalPaid < loanData.amount) {
+                        await updateDoc(loanDoc.ref, { status: 'active' });
+                        toast({
+                            title: 'Loan Status Updated',
+                            description: `Loan #${txToDelete.loanId} has been automatically reopened as it is no longer fully paid.`
+                        });
+                    }
+                }
+            }
+        }
         
         toast({
             title: 'Success!',
