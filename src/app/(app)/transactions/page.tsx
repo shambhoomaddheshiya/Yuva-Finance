@@ -228,16 +228,15 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
     try {
         if (values.type === 'loan') {
             const settingsRef = doc(firestore, `users/${user.uid}/groupSettings/settings`);
+            const batch = writeBatch(firestore);
             
-            // Get the current loan ID counter to calculate the new ID
+            // Get the settings doc to calculate the next ID before committing the batch
             const settingsSnap = await getDoc(settingsRef);
             if (!settingsSnap.exists() || settingsSnap.data()?.lastLoanId === undefined) {
-                throw new Error("Group settings are not configured properly. Cannot generate Loan ID.");
+                throw new Error("Group settings not found or lastLoanId is missing.");
             }
             const newLoanIdNumber = (settingsSnap.data()?.lastLoanId || 0) + 1;
             const newLoanIdString = String(newLoanIdNumber);
-
-            const batch = writeBatch(firestore);
 
             // 1. Increment the counter in settings
             batch.update(settingsRef, { lastLoanId: increment(1) });
@@ -251,12 +250,11 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                 date: Timestamp.fromDate(values.date),
                 description: values.description,
                 interestRate: values.interestRate || 0,
-                loanId: newLoanIdString, // Use the new sequential ID
+                loanId: newLoanIdString,
                 status: 'active',
             };
             batch.set(newLoanRef, newLoanData);
             
-            // Commit the atomic batch
             await batch.commit();
 
         } else {
