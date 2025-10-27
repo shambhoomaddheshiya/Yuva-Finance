@@ -281,7 +281,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
 }
 
 
-function PassbookView({ member, allMembers, transactions }: { member: Member, allMembers: Member[], transactions: Transaction[] | null }) {
+function PassbookView({ member, allMembers, transactions, globalLoanSequence }: { member: Member, allMembers: Member[], transactions: Transaction[] | null, globalLoanSequence: Map<string, number> }) {
     const isLoading = !transactions;
 
     const getTransactionDate = (tx: Transaction): Date => {
@@ -301,9 +301,8 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
         interestShare, 
         grandTotal,
         loanHistory,
-        memberLoanSequence,
     } = useMemo(() => {
-        const initialResult = { sortedTransactions: [], depositBalance: 0, loanBalance: 0, interestShare: 0, grandTotal: 0, loanHistory: [], memberLoanSequence: new Map<string, number>() };
+        const initialResult = { sortedTransactions: [], depositBalance: 0, loanBalance: 0, interestShare: 0, grandTotal: 0, loanHistory: [] };
         if (!transactions || !allMembers) {
             return initialResult;
         }
@@ -351,13 +350,7 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             .filter(t => t.type === 'deposit')
             .reduce((sum, t) => sum + t.amount, 0);
 
-        const memberLoans = memberTransactions.filter(t => t.type === 'loan').sort((a, b) => getTransactionDate(a).getTime() - getTransactionDate(b).getTime());
-        const sequenceMap = new Map<string, number>();
-        memberLoans.forEach((loan, index) => {
-          if (loan.loanId) {
-            sequenceMap.set(loan.loanId, index + 1);
-          }
-        });
+        const memberLoans = memberTransactions.filter(t => t.type === 'loan');
 
         const calculatedLoanHistory = memberLoans.map(loan => {
             const repayments = memberTransactions.filter(t => t.type === 'repayment' && t.loanId === loan.loanId);
@@ -380,7 +373,6 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
             interestShare: calculatedInterestShare,
             grandTotal: calculatedGrandTotal,
             loanHistory: calculatedLoanHistory,
-            memberLoanSequence: sequenceMap,
         };
     }, [transactions, member, allMembers]);
     
@@ -453,7 +445,7 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
                                 <CardContent className="p-3">
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <p className="font-semibold">Loan #{memberLoanSequence.get(loan.loanId!)?.toString().padStart(3, '0')} on {getTransactionDate(loan).toLocaleDateString()}</p>
+                                            <p className="font-semibold">Loan #{globalLoanSequence.get(loan.loanId!)?.toString().padStart(3, '0')} on {getTransactionDate(loan).toLocaleDateString()}</p>
                                             <p className="text-muted-foreground">Amount: Rs. {loan.amount.toLocaleString('en-IN')} @ {loan.interestRate}%</p>
                                         </div>
                                         {loan.isClosed ? (
@@ -568,6 +560,32 @@ export default function MembersPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const getTransactionDate = (tx: Transaction): Date => {
+    if (!tx?.date) return new Date();
+    if (tx.date instanceof Timestamp) {
+        return tx.date.toDate();
+    }
+    if (tx.date instanceof Date) {
+        return tx.date;
+    }
+    return new Date(tx.date as string);
+  };
+
+  const globalLoanSequence = useMemo(() => {
+    const sequence = new Map<string, number>();
+    if (!transactionList) return sequence;
+
+    const allLoans = transactionList
+      .filter(tx => tx.type === 'loan' && tx.loanId)
+      .sort((a, b) => getTransactionDate(a).getTime() - getTransactionDate(b).getTime());
+
+    allLoans.forEach((loan, index) => {
+      sequence.set(loan.loanId!, index + 1);
+    });
+
+    return sequence;
+  }, [transactionList]);
 
   const memberBalances = useMemo(() => {
     const balances = new Map<string, { depositBalance: number, loanBalance: number }>();
@@ -885,7 +903,7 @@ export default function MembersPage() {
 
       <Dialog open={isPassbookOpen} onOpenChange={setIsPassbookOpen}>
         <DialogContent className="sm:max-w-lg h-[90vh] flex flex-col p-0 gap-0">
-            {selectedMember && memberList && <PassbookView member={selectedMember} allMembers={memberList} transactions={transactionList} />}
+            {selectedMember && memberList && <PassbookView member={selectedMember} allMembers={memberList} transactions={transactionList} globalLoanSequence={globalLoanSequence} />}
         </DialogContent>
       </Dialog>
 

@@ -256,7 +256,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                 newTxData.loanId = values.loanId;
             }
 
-            await addDoc(collection(firestore, `users/${user.uid}/transactions`), newTxData);
+            await setDoc(newTxRef, newTxData);
 
             if (values.type === 'repayment' && values.loanId) {
                 // After a successful repayment, check if the corresponding loan is now fully paid.
@@ -275,9 +275,6 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                     const repaymentsSnapshot = await getDocs(repaymentsQuery);
                     let totalPrincipalPaid = repaymentsSnapshot.docs.reduce((sum, doc) => sum + (doc.data().principal || 0), 0);
                     
-                    // Also add the current repayment's principal
-                    totalPrincipalPaid += values.principal || 0;
-
                     if (totalPrincipalPaid >= loanAmount) {
                         await updateDoc(loanDocRef, { status: 'closed' });
                     }
@@ -960,33 +957,19 @@ export default function TransactionsPage() {
     }
   }
 
-  const memberLoanSequences = useMemo(() => {
-    const sequences = new Map<string, Map<string, number>>();
-    if (!transactions) return sequences;
+  const globalLoanSequence = useMemo(() => {
+    const sequence = new Map<string, number>();
+    if (!transactions) return sequence;
 
-    const memberLoans = new Map<string, Transaction[]>();
+    const allLoans = transactions
+      .filter(tx => tx.type === 'loan' && tx.loanId)
+      .sort((a, b) => getTransactionDate(a).getTime() - getTransactionDate(b).getTime());
 
-    transactions
-      .filter(tx => tx.type === 'loan')
-      .forEach(tx => {
-        if (!memberLoans.has(tx.memberId)) {
-          memberLoans.set(tx.memberId, []);
-        }
-        memberLoans.get(tx.memberId)!.push(tx);
-      });
-
-    memberLoans.forEach((loans, memberId) => {
-      const sortedLoans = loans.sort((a, b) => getTransactionDate(a).getTime() - getTransactionDate(b).getTime());
-      const loanSequence = new Map<string, number>();
-      sortedLoans.forEach((loan, index) => {
-        if (loan.loanId) {
-          loanSequence.set(loan.loanId, index + 1);
-        }
-      });
-      sequences.set(memberId, loanSequence);
+    allLoans.forEach((loan, index) => {
+      sequence.set(loan.loanId!, index + 1);
     });
 
-    return sequences;
+    return sequence;
   }, [transactions]);
 
 
@@ -1122,15 +1105,11 @@ export default function TransactionsPage() {
         
         // If the deleted transaction was a repayment, re-evaluate the loan status
         if (txToDelete.type === 'repayment' && txToDelete.loanId) {
-            const loanQuery = query(
-                collection(firestore, `users/${user.uid}/transactions`),
-                where('type', '==', 'loan'),
-                where('loanId', '==', txToDelete.loanId)
-            );
-            const loanSnapshot = await getDocs(loanQuery);
-            if (!loanSnapshot.empty) {
-                const loanDoc = loanSnapshot.docs[0];
-                const loanData = loanDoc.data() as Transaction;
+            const loanRef = doc(firestore, `users/${user.uid}/transactions`, txToDelete.loanId);
+            const loanSnap = await getDoc(loanRef);
+
+            if (loanSnap.exists()) {
+                const loanData = loanSnap.data() as Transaction;
                 
                 // If loan was closed, check if it should be re-opened
                 if (loanData.status === 'closed') {
@@ -1143,10 +1122,10 @@ export default function TransactionsPage() {
                     const totalPrincipalPaid = repaymentsSnapshot.docs.reduce((sum, doc) => sum + (doc.data().principal || 0), 0);
 
                     if (totalPrincipalPaid < loanData.amount) {
-                        await updateDoc(loanDoc.ref, { status: 'active' });
+                        await updateDoc(loanRef, { status: 'active' });
                         toast({
                             title: 'Loan Status Updated',
-                            description: `Loan #${txToDelete.loanId} has been automatically reopened as it is no longer fully paid.`
+                            description: `Loan #${globalLoanSequence.get(txToDelete.loanId)?.toString().padStart(3, '0')} has been automatically reopened as it is no longer fully paid.`
                         });
                     }
                 }
@@ -1314,10 +1293,10 @@ export default function TransactionsPage() {
                     </TableCell>
                     <TableCell>{getTransactionDate(tx).toLocaleDateString()}</TableCell>
                     <TableCell>
-                      {tx.type === 'loan' ? (
+                      {tx.type === 'loan' && tx.loanId ? (
                         <div className="flex flex-col">
                             <span className="text-xs text-muted-foreground">
-                              Loan #{memberLoanSequences.get(tx.memberId)?.get(tx.loanId!)?.toString().padStart(3, '0')}
+                              Loan #{globalLoanSequence.get(tx.loanId)?.toString().padStart(3, '0')}
                             </span>
                             <span>Rate: {tx.interestRate}% | Status: <span className={cn('font-semibold', tx.status === 'active' ? 'text-green-600' : 'text-gray-500')}>{tx.status}</span></span>
                         </div>
