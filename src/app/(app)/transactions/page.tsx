@@ -243,15 +243,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         }
         
         if (values.type === 'loan') {
-            const allLoanTransactionsQuery = query(
-                collection(firestore, `users/${user.uid}/transactions`), 
-                where('type', '==', 'loan')
-            );
-            const allLoanTransactionsSnapshot = await getDocs(allLoanTransactionsQuery);
-            const newLoanNumber = allLoanTransactionsSnapshot.size + 1;
-            const newLoanId = String(newLoanNumber).padStart(3, '0');
-
-            newTxData.loanId = newLoanId;
+            newTxData.loanId = newTxRef.id;
             newTxData.status = 'active';
             newTxData.interestRate = values.interestRate || 0;
         }
@@ -259,10 +251,10 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
         await setDoc(newTxRef, newTxData);
 
         if (values.type === 'repayment' && values.loanId) {
-            const loanQuery = query(
+             const loanQuery = query(
                 collection(firestore, `users/${user.uid}/transactions`),
-                where('type', '==', 'loan'),
-                where('loanId', '==', values.loanId)
+                where('loanId', '==', values.loanId),
+                where('type', '==', 'loan')
             );
             const loanSnapshot = await getDocs(loanQuery);
 
@@ -384,7 +376,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                             {activeLoans.length > 0 ? (
                                 activeLoans.map((loan) => (
                                 <SelectItem key={loan.id} value={loan.loanId!}>
-                                    {`Loan #${loan.loanId} of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
+                                    {`Loan of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
                                 </SelectItem>
                                 ))
                             ) : (
