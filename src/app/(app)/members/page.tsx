@@ -281,7 +281,7 @@ function MemberForm({ onOpenChange, member, isEdit = false }: { onOpenChange: (o
 }
 
 
-function PassbookView({ member, allMembers, transactions }: { member: Member, allMembers: Member[], transactions: Transaction[] | null }) {
+function PassbookView({ member, allMembers, transactions, globalLoanSequence }: { member: Member, allMembers: Member[], transactions: Transaction[] | null, globalLoanSequence: Map<string, number> }) {
     const isLoading = !transactions;
 
     const getTransactionDate = (tx: Transaction): Date => {
@@ -445,7 +445,7 @@ function PassbookView({ member, allMembers, transactions }: { member: Member, al
                                 <CardContent className="p-3">
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <p className="font-semibold">Loan #{loan.loanId} on {getTransactionDate(loan).toLocaleDateString()}</p>
+                                            <p className="font-semibold">Loan #{globalLoanSequence.get(loan.loanId!)?.toString().padStart(3, '0')} on {getTransactionDate(loan).toLocaleDateString()}</p>
                                             <p className="text-muted-foreground">Amount: Rs. {loan.amount.toLocaleString('en-IN')} @ {loan.interestRate}%</p>
                                         </div>
                                         {loan.isClosed ? (
@@ -903,7 +903,7 @@ export default function MembersPage() {
 
       <Dialog open={isPassbookOpen} onOpenChange={setIsPassbookOpen}>
         <DialogContent className="sm:max-w-lg h-[90vh] flex flex-col p-0 gap-0">
-            {selectedMember && memberList && <PassbookView member={selectedMember} allMembers={memberList} transactions={transactionList} />}
+            {selectedMember && memberList && <PassbookView member={selectedMember} allMembers={memberList} transactions={transactionList} globalLoanSequence={globalLoanSequence} />}
         </DialogContent>
       </Dialog>
 

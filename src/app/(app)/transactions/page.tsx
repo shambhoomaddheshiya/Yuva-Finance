@@ -6,7 +6,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PlusCircle, Loader2, Calendar as CalendarIcon, ArrowDown, ArrowUp, Search, MoreHorizontal, Pencil, Trash2, HandCoins, Banknote, PiggyBank, Landmark, ShieldX } from 'lucide-react';
-import { collection, doc, getDoc, query, writeBatch, where, getDocs, deleteDoc, Timestamp, updateDoc, increment, setDoc, addDoc, runTransaction } from 'firebase/firestore';
+import { collection, doc, getDoc, query, writeBatch, where, getDocs, deleteDoc, Timestamp, updateDoc, increment, setDoc, addDoc } from 'firebase/firestore';
 import { format, getYear, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -226,76 +226,50 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
     setIsLoading(true);
 
     try {
+        const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
+        
+        let newTxData: Omit<Transaction, 'id'> = {
+            memberId: values.memberId,
+            type: values.type,
+            amount: values.amount,
+            date: Timestamp.fromDate(values.date),
+            description: values.description,
+        };
+
         if (values.type === 'loan') {
-            const settingsRef = doc(firestore, `users/${user.uid}/groupSettings/settings`);
-            const batch = writeBatch(firestore);
+            newTxData.loanId = newTxRef.id; // Use the document's own ID as the loan ID
+            newTxData.status = 'active';
+            newTxData.interestRate = values.interestRate || 0;
+        }
+
+        if (values.type === 'repayment') {
+            newTxData.principal = values.principal || 0;
+            newTxData.interest = values.interest || 0;
+            newTxData.loanId = values.loanId;
+        }
+
+        await setDoc(newTxRef, newTxData);
+
+        if (values.type === 'repayment' && values.loanId) {
+            // After a successful repayment, check if the corresponding loan is now fully paid.
+            const loanQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('loanId', '==', values.loanId), where('type', '==', 'loan'));
+            const loanSnapshot = await getDocs(loanQuery);
             
-            // Get the settings doc to calculate the next ID before committing the batch
-            const settingsSnap = await getDoc(settingsRef);
-            if (!settingsSnap.exists() || settingsSnap.data()?.lastLoanId === undefined) {
-                throw new Error("Group settings not found or lastLoanId is missing.");
-            }
-            const newLoanIdNumber = (settingsSnap.data()?.lastLoanId || 0) + 1;
-            const newLoanIdString = String(newLoanIdNumber);
-
-            // 1. Increment the counter in settings
-            batch.update(settingsRef, { lastLoanId: increment(1) });
-            
-            // 2. Create the new loan transaction with the new ID
-            const newLoanRef = doc(collection(firestore, `users/${user.uid}/transactions`));
-            const newLoanData: Omit<Transaction, 'id'> = {
-                memberId: values.memberId,
-                type: 'loan',
-                amount: values.amount,
-                date: Timestamp.fromDate(values.date),
-                description: values.description,
-                interestRate: values.interestRate || 0,
-                loanId: newLoanIdString,
-                status: 'active',
-            };
-            batch.set(newLoanRef, newLoanData);
-            
-            await batch.commit();
-
-        } else {
-             const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
-             let newTxData: Omit<Transaction, 'id'> = {
-                memberId: values.memberId,
-                type: values.type,
-                amount: values.amount,
-                date: Timestamp.fromDate(values.date),
-                description: values.description,
-            };
-
-            if (values.type === 'repayment') {
-                newTxData.principal = values.principal || 0;
-                newTxData.interest = values.interest || 0;
-                newTxData.loanId = values.loanId;
-            }
-
-            await setDoc(newTxRef, newTxData);
-
-            if (values.type === 'repayment' && values.loanId) {
-                // After a successful repayment, check if the corresponding loan is now fully paid.
-                const loanQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('loanId', '==', values.loanId), where('type', '==', 'loan'));
-                const loanSnapshot = await getDocs(loanQuery);
+            if (!loanSnapshot.empty) {
+                const loanDoc = loanSnapshot.docs[0];
+                const loanData = loanDoc.data() as Transaction;
+                const loanAmount = loanData.amount;
                 
-                if (!loanSnapshot.empty) {
-                    const loanDoc = loanSnapshot.docs[0];
-                    const loanData = loanDoc.data() as Transaction;
-                    const loanAmount = loanData.amount;
-                    
-                    const repaymentsQuery = query(
-                        collection(firestore, `users/${user.uid}/transactions`),
-                        where('type', '==', 'repayment'),
-                        where('loanId', '==', values.loanId)
-                    );
-                    const repaymentsSnapshot = await getDocs(repaymentsQuery);
-                    let totalPrincipalPaid = repaymentsSnapshot.docs.reduce((sum, doc) => sum + (doc.data().principal || 0), 0);
-                    
-                    if (totalPrincipalPaid >= loanAmount) {
-                        await updateDoc(loanDoc.ref, { status: 'closed' });
-                    }
+                const repaymentsQuery = query(
+                    collection(firestore, `users/${user.uid}/transactions`),
+                    where('type', '==', 'repayment'),
+                    where('loanId', '==', values.loanId)
+                );
+                const repaymentsSnapshot = await getDocs(repaymentsQuery);
+                let totalPrincipalPaid = repaymentsSnapshot.docs.reduce((sum, doc) => sum + (doc.data().principal || 0), 0);
+                
+                if (totalPrincipalPaid >= loanAmount) {
+                    await updateDoc(loanDoc.ref, { status: 'closed' });
                 }
             }
         }
@@ -1315,7 +1289,7 @@ export default function TransactionsPage() {
                       {tx.type === 'loan' && tx.loanId ? (
                         <div className="flex flex-col">
                             <span className="text-xs text-muted-foreground">
-                              Loan #{tx.loanId}
+                              Loan #{globalLoanSequence.get(tx.loanId)?.toString().padStart(3, '0')}
                             </span>
                             <span>Rate: {tx.interestRate}% | Status: <span className={cn('font-semibold', tx.status === 'active' ? 'text-green-600' : 'text-gray-500')}>{tx.status}</span></span>
                         </div>
