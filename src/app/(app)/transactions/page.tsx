@@ -227,6 +227,22 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
     try {
         if (values.type === 'loan') {
+            const settingsRef = doc(firestore, `users/${user.uid}/groupSettings/settings`);
+            
+            // Get the current loan ID counter to calculate the new ID
+            const settingsSnap = await getDoc(settingsRef);
+            if (!settingsSnap.exists() || settingsSnap.data()?.lastLoanId === undefined) {
+                throw new Error("Group settings are not configured properly. Cannot generate Loan ID.");
+            }
+            const newLoanIdNumber = (settingsSnap.data()?.lastLoanId || 0) + 1;
+            const newLoanIdString = String(newLoanIdNumber);
+
+            const batch = writeBatch(firestore);
+
+            // 1. Increment the counter in settings
+            batch.update(settingsRef, { lastLoanId: increment(1) });
+            
+            // 2. Create the new loan transaction with the new ID
             const newLoanRef = doc(collection(firestore, `users/${user.uid}/transactions`));
             const newLoanData: Omit<Transaction, 'id'> = {
                 memberId: values.memberId,
@@ -235,10 +251,13 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                 date: Timestamp.fromDate(values.date),
                 description: values.description,
                 interestRate: values.interestRate || 0,
-                loanId: newLoanRef.id,
+                loanId: newLoanIdString, // Use the new sequential ID
                 status: 'active',
             };
-            await setDoc(newLoanRef, newLoanData);
+            batch.set(newLoanRef, newLoanData);
+            
+            // Commit the atomic batch
+            await batch.commit();
 
         } else {
              const newTxRef = doc(collection(firestore, `users/${user.uid}/transactions`));
@@ -260,10 +279,11 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
             if (values.type === 'repayment' && values.loanId) {
                 // After a successful repayment, check if the corresponding loan is now fully paid.
-                const loanDocRef = doc(firestore, `users/${user.uid}/transactions`, values.loanId);
-                const loanDoc = await getDoc(loanDocRef);
-
-                if (loanDoc.exists()) {
+                const loanQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('loanId', '==', values.loanId), where('type', '==', 'loan'));
+                const loanSnapshot = await getDocs(loanQuery);
+                
+                if (!loanSnapshot.empty) {
+                    const loanDoc = loanSnapshot.docs[0];
                     const loanData = loanDoc.data() as Transaction;
                     const loanAmount = loanData.amount;
                     
@@ -276,7 +296,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                     let totalPrincipalPaid = repaymentsSnapshot.docs.reduce((sum, doc) => sum + (doc.data().principal || 0), 0);
                     
                     if (totalPrincipalPaid >= loanAmount) {
-                        await updateDoc(loanDocRef, { status: 'closed' });
+                        await updateDoc(loanDoc.ref, { status: 'closed' });
                     }
                 }
             }
@@ -379,7 +399,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                             {activeLoans.length > 0 ? (
                                 activeLoans.map((loan) => (
                                 <SelectItem key={loan.id} value={loan.loanId!}>
-                                    {`Loan of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
+                                    {`Loan #${loan.loanId} of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
                                 </SelectItem>
                                 ))
                             ) : (
@@ -1105,11 +1125,12 @@ export default function TransactionsPage() {
         
         // If the deleted transaction was a repayment, re-evaluate the loan status
         if (txToDelete.type === 'repayment' && txToDelete.loanId) {
-            const loanRef = doc(firestore, `users/${user.uid}/transactions`, txToDelete.loanId);
-            const loanSnap = await getDoc(loanRef);
+            const loanQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('loanId', '==', txToDelete.loanId), where('type', '==', 'loan'));
+            const loanSnapshot = await getDocs(loanQuery);
 
-            if (loanSnap.exists()) {
-                const loanData = loanSnap.data() as Transaction;
+            if (!loanSnapshot.empty) {
+                const loanDoc = loanSnapshot.docs[0];
+                const loanData = loanDoc.data() as Transaction;
                 
                 // If loan was closed, check if it should be re-opened
                 if (loanData.status === 'closed') {
@@ -1122,10 +1143,10 @@ export default function TransactionsPage() {
                     const totalPrincipalPaid = repaymentsSnapshot.docs.reduce((sum, doc) => sum + (doc.data().principal || 0), 0);
 
                     if (totalPrincipalPaid < loanData.amount) {
-                        await updateDoc(loanRef, { status: 'active' });
+                        await updateDoc(loanDoc.ref, { status: 'active' });
                         toast({
                             title: 'Loan Status Updated',
-                            description: `Loan #${globalLoanSequence.get(txToDelete.loanId)?.toString().padStart(3, '0')} has been automatically reopened as it is no longer fully paid.`
+                            description: `Loan #${txToDelete.loanId} has been automatically reopened as it is no longer fully paid.`
                         });
                     }
                 }
@@ -1296,7 +1317,7 @@ export default function TransactionsPage() {
                       {tx.type === 'loan' && tx.loanId ? (
                         <div className="flex flex-col">
                             <span className="text-xs text-muted-foreground">
-                              Loan #{globalLoanSequence.get(tx.loanId)?.toString().padStart(3, '0')}
+                              Loan #{tx.loanId}
                             </span>
                             <span>Rate: {tx.interestRate}% | Status: <span className={cn('font-semibold', tx.status === 'active' ? 'text-green-600' : 'text-gray-500')}>{tx.status}</span></span>
                         </div>
