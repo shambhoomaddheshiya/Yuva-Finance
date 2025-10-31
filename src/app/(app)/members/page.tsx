@@ -5,7 +5,7 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX, HandCoins, Percent, ShieldX, Archive, Landmark } from 'lucide-react';
+import { PlusCircle, Loader2, MoreHorizontal, Pencil, BookUser, Calendar as CalendarIcon, ArrowDown, ArrowUp, Trash2, Search, UserCheck, UserX, HandCoins, Percent, ShieldX, Archive, Landmark, RefreshCcw } from 'lucide-react';
 import { format, getYear, endOfMonth } from 'date-fns';
 import { collection, doc, query, where, writeBatch, getDocs, deleteDoc, getDoc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
@@ -818,7 +818,6 @@ export default function MembersPage() {
                     <TableCell className="font-mono">Rs. {(memberBalances.get(member.id)?.depositBalance || 0).toLocaleString('en-IN')}</TableCell>
                     <TableCell className="text-right font-mono">Rs. {(memberBalances.get(member.id)?.loanBalance || 0).toLocaleString('en-IN')}</TableCell>
                      <TableCell className="text-right">
-                      {member.status !== 'closed' ? (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="h-8 w-8 p-0" disabled={isUpdatingStatus && selectedMember?.id === member.id}>
@@ -827,30 +826,49 @@ export default function MembersPage() {
                             </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEdit(member)}>
-                                <Pencil className="mr-2 h-4 w-4" />
-                                <span>Edit</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handlePassbook(member)}>
-                                <BookUser className="mr-2 h-4 w-4" />
-                                <span>Passbook</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            {member.status === 'active' ? (
+                            {member.status !== 'closed' && (
+                                <>
+                                    <DropdownMenuItem onClick={() => handleEdit(member)}>
+                                        <Pencil className="mr-2 h-4 w-4" />
+                                        <span>Edit</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handlePassbook(member)}>
+                                        <BookUser className="mr-2 h-4 w-4" />
+                                        <span>Passbook</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                </>
+                            )}
+                            {member.status === 'active' && (
                                 <DropdownMenuItem onClick={() => handleStatusChange(member, 'inactive')}>
                                     <UserX className="mr-2 h-4 w-4" />
                                     <span>Deactivate</span>
                                 </DropdownMenuItem>
-                            ) : member.status === 'inactive' ? (
+                            )}
+                            {member.status === 'inactive' && (
                                 <DropdownMenuItem onClick={() => handleStatusChange(member, 'active')}>
                                     <UserCheck className="mr-2 h-4 w-4" />
                                     <span>Activate</span>
                                 </DropdownMenuItem>
-                            ) : null}
-                            <DropdownMenuItem onClick={() => handleCloseAccount(member)}>
-                                <Archive className="mr-2 h-4 w-4" />
-                                <span>Close Account</span>
-                            </DropdownMenuItem>
+                            )}
+                             {member.status === 'closed' && (
+                                <>
+                                    <DropdownMenuItem onClick={() => handlePassbook(member)}>
+                                        <BookUser className="mr-2 h-4 w-4" />
+                                        <span>Passbook</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleStatusChange(member, 'active')}>
+                                        <RefreshCcw className="mr-2 h-4 w-4" />
+                                        <span>Reactivate</span>
+                                    </DropdownMenuItem>
+                                </>
+                            )}
+                            {member.status !== 'closed' && (
+                                <DropdownMenuItem onClick={() => handleCloseAccount(member)}>
+                                    <Archive className="mr-2 h-4 w-4" />
+                                    <span>Close Account</span>
+                                </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => handleDelete(member)} className="text-destructive focus:bg-destructive/10 focus:text-destructive">
                                 <Trash2 className="mr-2 h-4 w-4" />
@@ -858,22 +876,6 @@ export default function MembersPage() {
                             </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
-                       ) : (
-                         <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="h-8 w-8 p-0">
-                                <MoreHorizontal className="h-4 w-4" />
-                                <span className="sr-only">Open menu</span>
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                               <DropdownMenuItem onClick={() => handlePassbook(member)}>
-                                <BookUser className="mr-2 h-4 w-4" />
-                                <span>Passbook</span>
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                       )}
                     </TableCell>                  
                   </TableRow>
                 ))
