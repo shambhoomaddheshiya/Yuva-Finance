@@ -135,7 +135,7 @@ const editTransactionSchema = editTransactionObjectSchema.refine(data => {
 });
 
 
-function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
+function AddTransactionForm({ onOpenChange, globalLoanSequence }: { onOpenChange: (open: boolean) => void, globalLoanSequence: Map<string, number> }) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
@@ -371,7 +371,7 @@ function AddTransactionForm({ onOpenChange }: { onOpenChange: (open: boolean) =>
                             {activeLoans.length > 0 ? (
                                 activeLoans.map((loan) => (
                                 <SelectItem key={loan.id} value={loan.loanId!}>
-                                    {`Loan #${loan.loanId} of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
+                                    {`Loan #${globalLoanSequence.get(loan.loanId!)?.toString().padStart(3, '0')} of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
                                 </SelectItem>
                                 ))
                             ) : (
@@ -1161,7 +1161,7 @@ export default function TransactionsPage() {
                 Select a member and enter the transaction details.
               </DialogDescription>
             </DialogHeader>
-            <AddTransactionForm onOpenChange={setIsAddDialogOpen} />
+            <AddTransactionForm onOpenChange={setIsAddDialogOpen} globalLoanSequence={globalLoanSequence} />
           </DialogContent>
         </Dialog>
       </div>
