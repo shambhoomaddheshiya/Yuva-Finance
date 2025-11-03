@@ -487,14 +487,27 @@ function PassbookView({ member, allMembers, transactions, globalLoanSequence }: 
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {sortedTransactions.map(tx => (
+                            {sortedTransactions.map(tx => {
+                                const isLoanTx = tx.type === 'loan';
+                                const loanFromHistory = isLoanTx ? loanHistory.find(l => l.id === tx.id) : undefined;
+                                
+                                return (
                                 <TableRow key={tx.id}>
                                     <TableCell>{getTransactionDate(tx).toLocaleDateString()}</TableCell>
                                     <TableCell className='capitalize'>
                                         <div className="flex flex-col items-start gap-1">
-                                            <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${getTxTypeClass(tx.type)}`}>
-                                                {getTxTypeIcon(tx.type)}
-                                                {tx.type.replace('-', ' ')}
+                                            <div className="flex items-center gap-2">
+                                                <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${getTxTypeClass(tx.type)}`}>
+                                                    {getTxTypeIcon(tx.type)}
+                                                    {tx.type.replace('-', ' ')}
+                                                </div>
+                                                {isLoanTx && loanFromHistory && (
+                                                     loanFromHistory.isClosed ? (
+                                                        <Badge variant="secondary" className="text-xs border-transparent bg-gray-100 text-gray-800">Closed</Badge>
+                                                    ) : (
+                                                        <Badge variant="secondary" className="text-xs border-transparent bg-green-100 text-green-800">Active</Badge>
+                                                    )
+                                                )}
                                             </div>
                                             {tx.type === 'repayment' && tx.loanId && globalLoanSequence.has(tx.loanId) && (
                                                 <p className="text-xs text-muted-foreground pl-1">
@@ -507,7 +520,7 @@ function PassbookView({ member, allMembers, transactions, globalLoanSequence }: 
                                         {getTxAmountPrefix(tx.type)}Rs. {tx.amount.toLocaleString('en-IN')}
                                     </TableCell>
                                 </TableRow>
-                            ))}
+                            )})}
                         </TableBody>
                     </Table>
                 ) : (
