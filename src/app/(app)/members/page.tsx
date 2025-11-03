@@ -449,9 +449,9 @@ function PassbookView({ member, allMembers, transactions, globalLoanSequence }: 
                                             <p className="text-muted-foreground">Amount: Rs. {loan.amount.toLocaleString('en-IN')} @ {loan.interestRate}%</p>
                                         </div>
                                         {loan.isClosed ? (
-                                            <Badge variant="secondary">Closed</Badge>
+                                            <Badge variant="secondary" className="border-transparent bg-gray-100 text-gray-800">Closed</Badge>
                                         ) : (
-                                            <Badge variant="secondary" className='bg-green-100 text-green-800'>Active</Badge>
+                                            <Badge variant="secondary" className="border-transparent bg-green-100 text-green-800">Active</Badge>
                                         )}
                                     </div>
                                     <Separator className="my-2" />
@@ -496,11 +496,6 @@ function PassbookView({ member, allMembers, transactions, globalLoanSequence }: 
                                                 {getTxTypeIcon(tx.type)}
                                                 {tx.type.replace('-', ' ')}
                                             </div>
-                                            {tx.type === 'loan' && (
-                                                <Badge variant={tx.status === 'active' ? 'default' : 'secondary'} className={cn('w-fit', tx.status === 'active' && 'bg-green-100 text-green-800')}>
-                                                    {tx.status}
-                                                </Badge>
-                                            )}
                                             {tx.type === 'repayment' && tx.loanId && globalLoanSequence.has(tx.loanId) && (
                                                 <p className="text-xs text-muted-foreground pl-1">
                                                     for Loan #{globalLoanSequence.get(tx.loanId)?.toString().padStart(3, '0')}
