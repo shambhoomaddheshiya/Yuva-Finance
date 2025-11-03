@@ -491,15 +491,20 @@ function PassbookView({ member, allMembers, transactions, globalLoanSequence }: 
                                 <TableRow key={tx.id}>
                                     <TableCell>{getTransactionDate(tx).toLocaleDateString()}</TableCell>
                                     <TableCell className='capitalize'>
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex flex-col items-start gap-1">
                                             <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${getTxTypeClass(tx.type)}`}>
                                                 {getTxTypeIcon(tx.type)}
                                                 {tx.type.replace('-', ' ')}
                                             </div>
                                             {tx.type === 'loan' && (
-                                                <Badge variant={tx.status === 'active' ? 'default' : 'secondary'} className={cn(tx.status === 'active' && 'bg-green-100 text-green-800')}>
+                                                <Badge variant={tx.status === 'active' ? 'default' : 'secondary'} className={cn('w-fit', tx.status === 'active' && 'bg-green-100 text-green-800')}>
                                                     {tx.status}
                                                 </Badge>
+                                            )}
+                                            {tx.type === 'repayment' && tx.loanId && globalLoanSequence.has(tx.loanId) && (
+                                                <p className="text-xs text-muted-foreground pl-1">
+                                                    for Loan #{globalLoanSequence.get(tx.loanId)?.toString().padStart(3, '0')}
+                                                </p>
                                             )}
                                         </div>
                                     </TableCell>
