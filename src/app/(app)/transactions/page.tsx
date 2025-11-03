@@ -154,7 +154,6 @@ function AddTransactionForm({ onOpenChange, globalLoanSequence }: { onOpenChange
   const allTransactionsRef = useMemoFirebase(() => user && firestore ? query(collection(firestore, `users/${user.uid}/transactions`)) : null, [user, firestore]);
   const { data: allTransactions } = useCollection<Transaction>(allTransactionsRef);
 
-
   const form = useForm<z.infer<typeof transactionSchema>>({
     resolver: zodResolver(transactionSchema),
     defaultValues: {
@@ -219,6 +218,19 @@ function AddTransactionForm({ onOpenChange, globalLoanSequence }: { onOpenChange
     }
     return { depositBalance, loanBalance };
   }, [selectedMemberId, allTransactions]);
+
+  const membersWithActiveLoans = useMemo(() => {
+    if (!allTransactions || !members) return [];
+    const activeLoanMemberIds = new Set(allTransactions.filter(tx => tx.type === 'loan' && tx.status === 'active').map(tx => tx.memberId));
+    return members.filter(m => activeLoanMemberIds.has(m.id));
+  }, [allTransactions, members]);
+
+  const membersForDropdown = useMemo(() => {
+    if (transactionType === 'repayment') {
+        return membersWithActiveLoans;
+    }
+    return sortedMembers;
+  }, [transactionType, sortedMembers, membersWithActiveLoans]);
 
 
   async function onSubmit(values: z.infer<typeof transactionSchema>) {
@@ -310,7 +322,7 @@ function AddTransactionForm({ onOpenChange, globalLoanSequence }: { onOpenChange
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {sortedMembers?.map((m) => (
+                  {membersForDropdown?.map((m) => (
                     <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -1368,3 +1380,4 @@ export default function TransactionsPage() {
     </div>
   );
 }
+
