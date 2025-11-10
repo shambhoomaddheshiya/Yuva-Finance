@@ -139,7 +139,7 @@ function AddTransactionForm({ onOpenChange, globalLoanSequence }: { onOpenChange
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
-  const [activeLoans, setActiveLoans] = useState<Transaction[]>([]);
+  const [activeLoans, setActiveLoans] = useState<(Transaction & { outstanding: number })[]>([]);
   const { user } = useUser();
   const firestore = useFirestore();
 
@@ -182,10 +182,18 @@ function AddTransactionForm({ onOpenChange, globalLoanSequence }: { onOpenChange
 
   useEffect(() => {
     if (selectedMemberId && allTransactions) {
-      const loans = allTransactions.filter(
+      const memberLoans = allTransactions.filter(
         tx => tx.type === 'loan' && tx.memberId === selectedMemberId && tx.status === 'active'
       );
-      setActiveLoans(loans);
+      
+      const loansWithBalance = memberLoans.map(loan => {
+          const repayments = allTransactions.filter(t => t.type === 'repayment' && t.loanId === loan.id);
+          const totalPrincipalRepaid = repayments.reduce((sum, t) => sum + (t.principal || 0), 0);
+          const outstanding = loan.amount - totalPrincipalRepaid;
+          return { ...loan, outstanding };
+      });
+
+      setActiveLoans(loansWithBalance);
     } else {
       setActiveLoans([]);
     }
@@ -264,14 +272,14 @@ function AddTransactionForm({ onOpenChange, globalLoanSequence }: { onOpenChange
 
         if (values.type === 'repayment' && values.loanId) {
             // After a successful repayment, check if the corresponding loan is now fully paid.
-            const loanQuery = query(collection(firestore, `users/${user.uid}/transactions`), where('loanId', '==', values.loanId), where('type', '==', 'loan'));
-            const loanSnapshot = await getDocs(loanQuery);
-            
-            if (!loanSnapshot.empty) {
-                const loanDoc = loanSnapshot.docs[0];
+            const loanRef = doc(firestore, `users/${user.uid}/transactions`, values.loanId);
+            const loanDoc = await getDoc(loanRef);
+
+            if (loanDoc.exists()) {
                 const loanData = loanDoc.data() as Transaction;
                 const loanAmount = loanData.amount;
                 
+                // Fetch all repayments for this loan, including the one just added
                 const repaymentsQuery = query(
                     collection(firestore, `users/${user.uid}/transactions`),
                     where('type', '==', 'repayment'),
@@ -281,7 +289,7 @@ function AddTransactionForm({ onOpenChange, globalLoanSequence }: { onOpenChange
                 let totalPrincipalPaid = repaymentsSnapshot.docs.reduce((sum, doc) => sum + (doc.data().principal || 0), 0);
                 
                 if (totalPrincipalPaid >= loanAmount) {
-                    await updateDoc(loanDoc.ref, { status: 'closed' });
+                    await updateDoc(loanRef, { status: 'closed' });
                 }
             }
         }
@@ -382,8 +390,8 @@ function AddTransactionForm({ onOpenChange, globalLoanSequence }: { onOpenChange
                             <SelectContent>
                             {activeLoans.length > 0 ? (
                                 activeLoans.map((loan) => (
-                                <SelectItem key={loan.id} value={loan.loanId!}>
-                                    {`Loan #${globalLoanSequence.get(loan.loanId!)?.toString().padStart(3, '0')} of Rs. ${loan.amount} on ${format(loan.date.toDate(), 'PP')}`}
+                                <SelectItem key={loan.id} value={loan.id}>
+                                    {`Loan #${globalLoanSequence.get(loan.id)?.toString().padStart(3, '0')} of Rs. ${loan.amount} (Rs. ${loan.outstanding} remaining)`}
                                 </SelectItem>
                                 ))
                             ) : (

@@ -68,6 +68,7 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 const memberSchema = z.object({
   id: z.string().min(1, 'Member ID cannot be empty.'),
@@ -353,14 +354,15 @@ function PassbookView({ member, allMembers, transactions, globalLoanSequence }: 
         const memberLoans = memberTransactions.filter(t => t.type === 'loan');
 
         const calculatedLoanHistory = memberLoans.map(loan => {
-            const repayments = memberTransactions.filter(t => t.type === 'repayment' && t.loanId === loan.loanId);
-            const waived = memberTransactions.find(t => t.type === 'loan-waived' && t.loanId === loan.loanId);
+            const repayments = transactions.filter(t => t.type === 'repayment' && t.loanId === loan.id);
+            const waived = transactions.find(t => t.type === 'loan-waived' && t.loanId === loan.id);
             const totalPrincipalRepaid = repayments.reduce((sum, t) => sum + (t.principal || 0), 0);
             const totalWaived = waived ? waived.amount : 0;
             const outstandingBalance = loan.amount - totalPrincipalRepaid - totalWaived;
             return {
                 ...loan,
                 outstandingBalance,
+                repayments,
                 isClosed: outstandingBalance <= 0 || loan.status === 'closed',
             };
         });
@@ -439,11 +441,13 @@ function PassbookView({ member, allMembers, transactions, globalLoanSequence }: 
                      </div>
                  ) : loanHistory.length > 0 ? (
                      <ScrollArea className="h-40">
-                         <div className="space-y-3 p-1">
+                         <Accordion type="single" collapsible className="w-full">
                          {loanHistory.map(loan => (
-                            <Card key={loan.id} className="text-xs">
+                            <AccordionItem value={loan.id} key={loan.id} className="border-b-0">
+                                <Card className="text-xs mb-2">
                                 <CardContent className="p-3">
-                                    <div className="flex justify-between items-start">
+                                    <AccordionTrigger className="p-0 hover:no-underline">
+                                    <div className="flex justify-between items-start w-full">
                                         <div>
                                             <p className="font-semibold">Loan #{globalLoanSequence.get(loan.loanId!)?.toString().padStart(3, '0')} on {getTransactionDate(loan).toLocaleDateString()}</p>
                                             <p className="text-muted-foreground">Amount: Rs. {loan.amount.toLocaleString('en-IN')} @ {loan.interestRate}%</p>
@@ -454,15 +458,41 @@ function PassbookView({ member, allMembers, transactions, globalLoanSequence }: 
                                             <Badge variant="secondary" className="border-transparent bg-green-100 text-green-800">Active</Badge>
                                         )}
                                     </div>
-                                    <Separator className="my-2" />
+                                    </AccordionTrigger>
+                                     <Separator className="my-2" />
                                     <div className="flex justify-between">
                                         <p className="font-medium">Outstanding:</p>
                                         <p className="font-bold">Rs. {loan.outstandingBalance.toLocaleString('en-IN')}</p>
                                     </div>
+                                    <AccordionContent className="pt-2 mt-2 border-t">
+                                        {loan.repayments.length > 0 ? (
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead className="h-auto">Date</TableHead>
+                                                        <TableHead className="h-auto text-right">Principal</TableHead>
+                                                        <TableHead className="h-auto text-right">Interest</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                {loan.repayments.map(rp => (
+                                                    <TableRow key={rp.id} className="text-xs">
+                                                        <TableCell className="p-1">{getTransactionDate(rp).toLocaleDateString()}</TableCell>
+                                                        <TableCell className="p-1 text-right">Rs. {rp.principal?.toLocaleString('en-IN')}</TableCell>
+                                                        <TableCell className="p-1 text-right">Rs. {rp.interest?.toLocaleString('en-IN')}</TableCell>
+                                                    </TableRow>
+                                                ))}
+                                                </TableBody>
+                                            </Table>
+                                        ) : (
+                                            <p className="text-center text-muted-foreground text-xs py-2">No repayments made for this loan yet.</p>
+                                        )}
+                                    </AccordionContent>
                                 </CardContent>
-                            </Card>
+                                </Card>
+                            </AccordionItem>
                          ))}
-                         </div>
+                         </Accordion>
                      </ScrollArea>
                  ) : (
                     <div className="flex items-center justify-center h-20 w-full border-2 border-dashed rounded-md">
